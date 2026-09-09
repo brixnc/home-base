@@ -1,7 +1,12 @@
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AuthService } from './auth.service';
-import { Chore, DashboardRoommate, DashboardService, EventItem } from './dashboard.service';
+import {
+  DashboardChoreItem,
+  DashboardEventItem,
+  DashboardRoommate,
+  DashboardService,
+} from './dashboard.service';
 
 interface RoommateCard {
   name: string;
@@ -127,7 +132,7 @@ export class App {
     return this.statusLabel(status).toLowerCase();
   }
 
-  protected formatEventDate(event: EventItem): string {
+  protected formatEventDate(event: DashboardEventItem): string {
     const value = event.startTime || event.date;
     if (!value) {
       return 'Upcoming';
@@ -171,7 +176,7 @@ export class App {
     })}`;
   }
 
-  protected choreBucketLabel(item: Chore): string {
+  protected choreBucketLabel(item: DashboardChoreItem): string {
     if (item.overdue) {
       return 'OVERDUE';
     }

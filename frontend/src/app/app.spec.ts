@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { Component } from '@angular/core';
+import { provideRouter, Router } from '@angular/router';
 import { of } from 'rxjs';
 import { App } from './app';
 import { AuthService } from './auth.service';
@@ -14,6 +15,8 @@ class AuthServiceStub {
 class DashboardServiceStub {
   readonly dashboard = () => null;
   readonly currentUser = () => ({ displayName: 'Brian Parker' });
+  readonly loading = () => false;
+  readonly error = () => null;
   loadCurrentUser = () => {};
   loadDashboard = () => {};
   updatePresence = () => of({});
@@ -21,10 +24,13 @@ class DashboardServiceStub {
 
 describe('App', () => {
   beforeEach(async () => {
+    @Component({ template: '' })
+    class StubRouteComponent {}
+
     await TestBed.configureTestingModule({
       imports: [App],
       providers: [
-        provideRouter([]),
+        provideRouter([{ path: 'dashboard', component: StubRouteComponent }]),
         { provide: AuthService, useClass: AuthServiceStub },
         { provide: DashboardService, useClass: DashboardServiceStub },
       ],
@@ -39,6 +45,8 @@ describe('App', () => {
   });
 
   it('should render the dashboard welcome message', async () => {
+    const router = TestBed.inject(Router);
+    await router.navigateByUrl('/dashboard');
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     fixture.detectChanges();

@@ -244,7 +244,7 @@ export class DashboardService {
     request: {
       completed?: boolean;
       title?: string;
-      description?: string;
+      description?: string | null;
       dueDate?: string | null;
       assigneeId?: string | null;
       priority?: ChorePriority;
