@@ -1,6 +1,7 @@
 package com.homebase.api;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -47,8 +48,10 @@ public class DashboardService {
             row.put("id", profile.getId().toString());
             row.put("name", profile.getDisplayName());
             row.put("nickname", profile.getNickname());
-            row.put("status", status != null ? status.getStatus() : "AWAY");
+            row.put("status", toPublicStatus(status != null ? status.getStatus() : "AWAY"));
             row.put("detail", status != null && status.getNote() != null ? status.getNote() : "No update yet");
+            row.put("note", status != null ? status.getNote() : null);
+            row.put("backAt", status != null && status.getBackAt() != null ? status.getBackAt().toString() : null);
             row.put("email", profile.getFunFact());
             row.put("isCurrentUser", profile.getId().equals(currentUser.getId()));
             roommateList.add(row);
@@ -62,8 +65,12 @@ public class DashboardService {
                 row.put("title", chore.getTitle());
                 row.put("description", chore.getDescription());
                 row.put("assignee", chore.getAssignee() != null ? chore.getAssignee().getDisplayName() : "Unassigned");
+                row.put("assigneeId", chore.getAssignee() != null ? chore.getAssignee().getId().toString() : null);
                 row.put("dueDate", chore.getDueDate() != null ? chore.getDueDate().toString() : null);
+                row.put("priority", chore.getPriority());
                 row.put("completed", chore.isCompleted());
+                row.put("overdue", !chore.isCompleted() && chore.getDueDate() != null && chore.getDueDate().isBefore(LocalDate.now()));
+                row.put("dueToday", !chore.isCompleted() && chore.getDueDate() != null && chore.getDueDate().isEqual(LocalDate.now()));
                 row.put("createdAt", chore.getCreatedAt().toString());
                 return row;
             })
@@ -77,10 +84,12 @@ public class DashboardService {
                 row.put("title", event.getTitle());
                 row.put("description", event.getDescription());
                 row.put("date", event.getStartsAt().toLocalDate().toString());
-                row.put("startTime", event.getStartsAt().toLocalTime().toString());
-                row.put("endTime", event.getEndsAt() != null ? event.getEndsAt().toLocalTime().toString() : null);
+                row.put("startTime", event.getStartsAt().toString());
+                row.put("endTime", event.getEndsAt() != null ? event.getEndsAt().toString() : null);
                 row.put("location", event.getLocation());
-                row.put("creator", event.getCreator() != null ? event.getCreator().getDisplayName() : "Unknown");
+                row.put("creatorId", event.getCreator() != null ? event.getCreator().getId().toString() : null);
+                row.put("creatorName", event.getCreator() != null ? event.getCreator().getDisplayName() : "Unknown");
+                row.put("past", event.getStartsAt().isBefore(LocalDateTime.now()));
                 return row;
             })
             .collect(Collectors.toList());
@@ -94,6 +103,7 @@ public class DashboardService {
                 row.put("quantity", item.getQuantity());
                 row.put("category", item.getCategory());
                 row.put("purchased", item.getPurchasedAt() != null);
+                row.put("createdAt", item.getCreatedAt().toString());
                 row.put("addedBy", item.getAddedBy() != null ? item.getAddedBy().getDisplayName() : "Unknown");
                 return row;
             })
@@ -117,7 +127,10 @@ public class DashboardService {
             .filter(note -> note.getReadAt() == null)
             .count();
 
-        String status = presenceStatusRepository.findByUserProfileId(currentUser.getId()).map(PresenceStatus::getStatus).orElse("AWAY");
+        String status = presenceStatusRepository.findByUserProfileId(currentUser.getId())
+            .map(PresenceStatus::getStatus)
+            .map(this::toPublicStatus)
+            .orElse("AWAY");
         LocalDate today = LocalDate.now();
         boolean hasOpenChores = choreRepository.findAllByOrderByDueDateAscCreatedAtDesc().stream().anyMatch(chore -> !chore.isCompleted());
 
@@ -127,7 +140,7 @@ public class DashboardService {
             apartment.put("name", info.getName());
             apartment.put("address", info.getAddress());
             apartment.put("wifiName", info.getWifiName());
-            apartment.put("wifiPassword", info.getWifiPassword());
+            apartment.put("hasWifiPassword", info.getWifiPassword() != null && !info.getWifiPassword().isBlank());
             apartment.put("landlordContact", info.getLandlordContact());
             apartment.put("emergencyContact", info.getEmergencyContact());
             apartment.put("sharedNotes", info.getSharedNotes());
@@ -143,8 +156,31 @@ public class DashboardService {
         response.put("myStatus", status);
         response.put("today", today.toString());
         response.put("hasOpenChores", hasOpenChores);
+        response.put("overdueChoreCount", choreRepository.findAllByOrderByDueDateAscCreatedAtDesc().stream()
+            .filter(chore -> !chore.isCompleted() && chore.getDueDate() != null && chore.getDueDate().isBefore(today))
+            .count());
+        response.put("todayChoreCount", choreRepository.findAllByOrderByDueDateAscCreatedAtDesc().stream()
+            .filter(chore -> !chore.isCompleted() && chore.getDueDate() != null && chore.getDueDate().isEqual(today))
+            .count());
+        response.put("outstandingShoppingCount", shoppingItemRepository.findAllByOrderByCreatedAtDesc().stream()
+            .filter(item -> item.getPurchasedAt() == null)
+            .count());
+        response.put("purchasedShoppingCount", shoppingItemRepository.findAllByOrderByCreatedAtDesc().stream()
+            .filter(item -> item.getPurchasedAt() != null)
+            .count());
         response.put("apartment", apartment);
         response.put("generatedAt", OffsetDateTime.now().toString());
         return response;
+    }
+
+    private String toPublicStatus(String status) {
+        if (status == null) {
+            return "AWAY";
+        }
+        return switch (status.trim().toUpperCase()) {
+            case "AT_WORK" -> "WORK";
+            case "AT_SCHOOL" -> "SCHOOL";
+            default -> status.trim().toUpperCase();
+        };
     }
 }

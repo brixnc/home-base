@@ -1,14 +1,19 @@
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AuthService } from './auth.service';
-import { DashboardService } from './dashboard.service';
+import {
+  DashboardChoreItem,
+  DashboardEventItem,
+  DashboardRoommate,
+  DashboardService,
+} from './dashboard.service';
 
-type PresenceStatus = 'Home' | 'Away' | 'At work';
-interface Roommate {
+interface RoommateCard {
   name: string;
   initials: string;
-  status: PresenceStatus;
+  status: string;
   detail: string;
+  backAt?: string | null;
   color: string;
   isCurrentUser: boolean;
 }
@@ -30,13 +35,13 @@ export class App {
     { label: 'Chores', icon: '✓', route: '/chores' },
     { label: 'Shopping', icon: '▱', route: '/shopping' },
     { label: 'Roommates', icon: '◎', route: '/roommates' },
+    { label: 'Feed', icon: '✦', route: '/feed' },
   ];
-  protected readonly roommates = signal<Roommate[]>([]);
+  protected readonly roommates = signal<RoommateCard[]>([]);
   protected readonly homeCount = computed(
-    () => this.roommates().filter((roommate) => roommate.status === 'Home').length,
+    () => this.roommates().filter((roommate) => roommate.status === 'HOME').length,
   );
   protected readonly isDashboard = computed(() => this.currentUrl() === '/dashboard');
-
   protected readonly apartmentName = computed(
     () => this.dashboard.dashboard()?.apartment?.name ?? 'Homebase',
   );
@@ -46,11 +51,31 @@ export class App {
   protected readonly upcomingEvents = computed(() => this.dashboard.dashboard()?.events ?? []);
   protected readonly chores = computed(() => this.dashboard.dashboard()?.chores ?? []);
   protected readonly shopping = computed(() => this.dashboard.dashboard()?.shopping ?? []);
+  protected readonly notifications = computed(() => this.dashboard.dashboard()?.notifications ?? []);
   protected readonly unreadNotifications = computed(
     () => this.dashboard.dashboard()?.unreadNotifications ?? 0,
   );
+  protected readonly outstandingShoppingCount = computed(
+    () => this.dashboard.dashboard()?.outstandingShoppingCount ?? 0,
+  );
+  protected readonly purchasedShoppingCount = computed(
+    () => this.dashboard.dashboard()?.purchasedShoppingCount ?? 0,
+  );
+  protected readonly overdueChores = computed(() =>
+    this.chores().filter((item) => !item.completed && Boolean(item.overdue)).slice(0, 2),
+  );
+  protected readonly todayChores = computed(() =>
+    this.chores().filter((item) => !item.completed && Boolean(item.dueToday)).slice(0, 2),
+  );
+  protected readonly upcomingChores = computed(() =>
+    this.chores()
+      .filter((item) => !item.completed && !item.overdue && !item.dueToday)
+      .slice(0, 2),
+  );
 
   constructor(private readonly router: Router) {
+    this.currentUrl.set(this.router.url || '/dashboard');
+
     router.events.subscribe((event) => {
       if (event instanceof NavigationEnd) {
         this.currentUrl.set(event.urlAfterRedirects);
@@ -60,14 +85,7 @@ export class App {
     effect(() => {
       const data = this.dashboard.dashboard();
       if (data) {
-        this.syncRoommates(data);
-      }
-    });
-
-    effect(() => {
-      const user = this.dashboard.currentUser();
-      if (user?.displayName) {
-        this.auth.syncUserFromToken();
+        this.syncRoommates(data.roommates ?? []);
       }
     });
 
@@ -83,24 +101,11 @@ export class App {
   }
 
   protected cycleMyStatus(): void {
-    const statuses: PresenceStatus[] = ['Home', 'At work', 'Away'];
-    const currentUserIndex = this.roommates().findIndex((roommate) => roommate.isCurrentUser);
-    const current = this.roommates()[currentUserIndex]?.status ?? 'Away';
-    const nextStatus = statuses[(statuses.indexOf(current) + 1) % statuses.length];
-    this.roommates.update((roommates) =>
-      roommates.map((roommate, index) =>
-        index === currentUserIndex
-          ? {
-              ...roommate,
-              status: nextStatus,
-              detail: nextStatus === 'Home' ? 'In the apartment' : 'Status updated just now',
-            }
-          : roommate,
-      ),
-    );
-    void this.dashboard
-      .updatePresence({ status: nextStatus === 'At work' ? 'WORK' : nextStatus.toUpperCase() })
-      .subscribe();
+    const statuses = ['HOME', 'WORK', 'AWAY', 'SCHOOL', 'TRAVELING'];
+    const current = this.dashboard.currentUser()?.status;
+    const normalizedCurrent = this.statusLabel(current);
+    const nextStatus = statuses[(statuses.indexOf(normalizedCurrent) + 1) % statuses.length];
+    void this.dashboard.updatePresence({ status: nextStatus }).subscribe();
   }
 
   protected navigateTo(route: string): void {
@@ -111,27 +116,74 @@ export class App {
     await this.auth.logout();
   }
 
-  protected syncRoommates(
-    data?: {
-      roommates?: Array<{ name: string; status: string; detail: string; isCurrentUser?: boolean }>;
-    } | null,
-  ): void {
-    const rows = data?.roommates ?? [];
-    this.roommates.set(
-      rows.map((row) => ({
-        name: row.name,
-        initials: row.name
-          .split(' ')
-          .map((part) => part[0])
-          .slice(0, 2)
-          .join('')
-          .toUpperCase(),
-        status: row.status === 'HOME' ? 'Home' : row.status === 'AT_WORK' ? 'At work' : 'Away',
-        detail: row.detail || 'No status update yet',
-        color: row.name === 'Brian' ? '#ef8b69' : row.name === 'Alex' ? '#78a99b' : '#c7a45a',
-        isCurrentUser: Boolean(row.isCurrentUser),
-      })),
-    );
+  protected statusLabel(status: string | undefined | null): string {
+    const normalized = (status ?? 'AWAY').toUpperCase();
+    switch (normalized) {
+      case 'AT_WORK':
+        return 'WORK';
+      case 'AT_SCHOOL':
+        return 'SCHOOL';
+      default:
+        return normalized;
+    }
+  }
+
+  protected statusClass(status: string | undefined | null): string {
+    return this.statusLabel(status).toLowerCase();
+  }
+
+  protected formatEventDate(event: DashboardEventItem): string {
+    const value = event.startTime || event.date;
+    if (!value) {
+      return 'Upcoming';
+    }
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return event.date ?? value;
+    }
+    return parsed.toLocaleString([], {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+
+  protected formatDueDate(value?: string | null): string {
+    if (!value) {
+      return 'No due date';
+    }
+    const parsed = new Date(`${value}T00:00:00`);
+    if (Number.isNaN(parsed.getTime())) {
+      return value;
+    }
+    return parsed.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  }
+
+  protected formatBackAt(value?: string | null): string | null {
+    if (!value) {
+      return null;
+    }
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return value;
+    }
+    return `Back ${parsed.toLocaleString([], {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })}`;
+  }
+
+  protected choreBucketLabel(item: DashboardChoreItem): string {
+    if (item.overdue) {
+      return 'OVERDUE';
+    }
+    if (item.dueToday) {
+      return 'TODAY';
+    }
+    return item.priority ?? 'OPEN';
   }
 
   protected getDisplayName(): string {
@@ -140,7 +192,7 @@ export class App {
 
   protected getInitials(displayName?: string): string {
     if (!displayName) {
-      return 'BR';
+      return 'HB';
     }
     return displayName
       .split(' ')
@@ -148,5 +200,24 @@ export class App {
       .slice(0, 2)
       .join('')
       .toUpperCase();
+  }
+
+  private syncRoommates(rows: DashboardRoommate[]): void {
+    this.roommates.set(
+      rows.map((row, index) => ({
+        name: row.name,
+        initials: this.getInitials(row.name),
+        status: this.statusLabel(row.status),
+        detail: row.note || row.detail || 'No update yet',
+        backAt: row.backAt,
+        color: this.colorForIndex(index),
+        isCurrentUser: Boolean(row.isCurrentUser),
+      })),
+    );
+  }
+
+  private colorForIndex(index: number): string {
+    const palette = ['#ef8b69', '#78a99b', '#c7a45a', '#7c8df0', '#d975a0', '#57a8b5'];
+    return palette[index % palette.length];
   }
 }

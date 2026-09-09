@@ -12,8 +12,11 @@
           routerLinkActive="active"
           [routerLinkActiveOptions]="{ exact: item.route === '/dashboard' }"
           ><span class="nav-icon">{{ item.icon }}</span
-          >{{ item.label }}</a
-        >
+          >{{ item.label }}
+          @if (item.route === '/feed' && unreadNotifications()) {
+            <span class="nav-badge">{{ unreadNotifications() }}</span>
+          }
+        </a>
       }
     </nav>
     <div class="sidebar-bottom">
@@ -37,7 +40,10 @@
       <div class="mobile-brand"><span class="brand-mark">H</span><span>homebase</span></div>
       <div class="topbar-actions">
         <button class="icon-button" aria-label="Notifications" (click)="navigateTo('/feed')">
-          ♧<span class="notification-dot"></span>
+          ♧
+          @if (unreadNotifications()) {
+            <span class="notification-dot">{{ unreadNotifications() }}</span>
+          }
         </button>
         <button class="avatar coral" aria-label="Open profile" (click)="navigateTo('/settings')">
           {{ getInitials(getDisplayName()) }}
@@ -45,7 +51,15 @@
       </div>
     </header>
 
-    @if (isDashboard()) {
+    @if (dashboard.loading() && isDashboard()) {
+      <section class="dashboard">
+        <div class="empty-card">Loading your apartment dashboard…</div>
+      </section>
+    } @else if (dashboard.error() && isDashboard()) {
+      <section class="dashboard">
+        <div class="empty-card error-card">{{ dashboard.error() }}</div>
+      </section>
+    } @else if (isDashboard()) {
       <section class="dashboard">
         <div class="welcome-row">
           <div>
@@ -56,7 +70,19 @@
             <p class="subheading">Here’s what’s happening at home today.</p>
           </div>
           <button class="primary-action" (click)="cycleMyStatus()">
-            <span class="status-dot home"></span> Update my status <span>⌄</span>
+            <span class="status-dot" [class]="statusClass(dashboard.currentUser()?.status)"></span>
+            Set status
+          </button>
+        </div>
+
+        <div class="quick-actions">
+          <button class="quick-action" type="button" (click)="navigateTo('/chores')">Add chore</button>
+          <button class="quick-action" type="button" (click)="navigateTo('/calendar')">Add event</button>
+          <button class="quick-action" type="button" (click)="navigateTo('/shopping')">
+            Add shopping item
+          </button>
+          <button class="quick-action" type="button" (click)="navigateTo('/roommates')">
+            Update presence
           </button>
         </div>
 
@@ -67,7 +93,7 @@
                 <p class="eyebrow">RIGHT NOW</p>
                 <h2>
                   Who’s home
-                  <span class="count-pill">{{ homeCount() }}/{{ roommates().length || 3 }}</span>
+                  <span class="count-pill">{{ homeCount() }}/{{ roommates().length || 0 }}</span>
                 </h2>
               </div>
               <button
@@ -82,23 +108,29 @@
             <div class="roommate-list">
               @for (roommate of roommates(); track roommate.name) {
                 <div class="roommate-row">
-                  <span class="avatar" [style.background]="roommate.color">{{
-                    roommate.initials
-                  }}</span>
+                  <span class="avatar" [style.background]="roommate.color">{{ roommate.initials }}</span>
                   <div class="roommate-copy">
-                    <strong>{{ roommate.name }}</strong>
-                    <span
-                      ><i
-                        class="status-dot"
-                        [class.home]="roommate.status === 'Home'"
-                        [class.away]="roommate.status === 'Away'"
-                        [class.work]="roommate.status === 'At work'"
-                      ></i
-                      >{{ roommate.status }} · {{ roommate.detail }}</span
-                    >
+                    <strong>
+                      {{ roommate.name }}
+                      @if (roommate.isCurrentUser) {
+                        <span class="you-label">YOU</span>
+                      }
+                    </strong>
+                    <span>
+                      <i class="status-dot" [class]="statusClass(roommate.status)"></i
+                      >{{ statusLabel(roommate.status) }}
+                      @if (roommate.detail) {
+                        · {{ roommate.detail }}
+                      }
+                      @if (formatBackAt(roommate.backAt); as returnTime) {
+                        · {{ returnTime }}
+                      }
+                    </span>
                   </div>
                   <span class="row-arrow">›</span>
                 </div>
+              } @empty {
+                <div class="empty-card">No roommate statuses yet.</div>
               }
             </div>
             <a class="text-button" routerLink="/roommates">See all roommates <span>→</span></a>
@@ -120,7 +152,7 @@
                   <div>
                     <strong>{{ event.title }}</strong>
                     <span
-                      >{{ event.date || event.startTime || 'Upcoming' }}
+                      >{{ formatEventDate(event) }}
                       @if (event.location) {
                         · {{ event.location }}
                       }
@@ -174,30 +206,59 @@
                 <h2>
                   Chores
                   <span class="count-pill warm"
-                    >{{ chores().filter((item) => !item.completed).length }} due</span
+                    >{{ chores().filter((item) => !item.completed).length }} open</span
                   >
                 </h2>
               </div>
               <a class="text-button" routerLink="/chores">See all <span>→</span></a>
             </div>
 
-            @if (chores().length) {
-              @for (item of chores().slice(0, 2); track item.id ?? item.title) {
+            @if (overdueChores().length) {
+              <div class="section-label">Overdue</div>
+              @for (item of overdueChores(); track item.id ?? item.title) {
                 <div class="chore-line">
                   <span class="check-circle" [class.done]="item.completed"></span>
                   <div>
                     <strong>{{ item.title }}</strong>
                     <span
-                      >{{ item.assignee || 'Unassigned' }} ·
-                      {{ item.dueDate || 'No due date' }}</span
+                      >{{ item.assignee || 'Unassigned' }} · {{ formatDueDate(item.dueDate) }}</span
                     >
                   </div>
-                  <span class="priority" [class.normal]="!item.completed">{{
-                    item.completed ? 'DONE' : 'OPEN'
-                  }}</span>
+                  <span class="priority">{{ choreBucketLabel(item) }}</span>
                 </div>
               }
-            } @else {
+            }
+            @if (todayChores().length) {
+              <div class="section-label">Today</div>
+              @for (item of todayChores(); track item.id ?? item.title) {
+                <div class="chore-line">
+                  <span class="check-circle" [class.done]="item.completed"></span>
+                  <div>
+                    <strong>{{ item.title }}</strong>
+                    <span
+                      >{{ item.assignee || 'Unassigned' }} · {{ formatDueDate(item.dueDate) }}</span
+                    >
+                  </div>
+                  <span class="priority normal">{{ choreBucketLabel(item) }}</span>
+                </div>
+              }
+            }
+            @if (upcomingChores().length) {
+              <div class="section-label">Upcoming</div>
+              @for (item of upcomingChores(); track item.id ?? item.title) {
+                <div class="chore-line">
+                  <span class="check-circle" [class.done]="item.completed"></span>
+                  <div>
+                    <strong>{{ item.title }}</strong>
+                    <span
+                      >{{ item.assignee || 'Unassigned' }} · {{ formatDueDate(item.dueDate) }}</span
+                    >
+                  </div>
+                  <span class="priority normal">{{ choreBucketLabel(item) }}</span>
+                </div>
+              }
+            }
+            @if (!chores().length) {
               <div class="empty-card">No chores scheduled.</div>
             }
           </section>
@@ -206,16 +267,16 @@
             <div class="panel-heading">
               <div>
                 <p class="eyebrow">FROM THE HOUSE</p>
-                <h2>Latest updates</h2>
+                <h2>
+                  Latest updates
+                  <span class="count-pill">{{ unreadNotifications() }} unread</span>
+                </h2>
               </div>
               <a class="text-button" routerLink="/feed">Open feed <span>→</span></a>
             </div>
 
-            @if (dashboard.dashboard()?.notifications?.length) {
-              @for (
-                notification of dashboard.dashboard()?.notifications?.slice(0, 3) ?? [];
-                track notification.id ?? notification.title
-              ) {
+            @if (notifications().length) {
+              @for (notification of notifications().slice(0, 3); track notification.id ?? notification.title) {
                 <div class="feed-line">
                   <span class="avatar small coral">{{
                     notification.title.slice(0, 2).toUpperCase()
@@ -232,6 +293,13 @@
             } @else {
               <div class="empty-card">No updates yet.</div>
             }
+
+            <div class="points-strip">
+              <span>Shopping</span>
+              <strong>{{ outstandingShoppingCount() }} needed</strong>
+              <span>·</span>
+              <strong>{{ purchasedShoppingCount() }} purchased</strong>
+            </div>
           </section>
         </div>
       </section>
