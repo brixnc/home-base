@@ -1,0 +1,23 @@
+server:
+  port: ${PORT:8082}
+spring:
+  datasource:
+    url: ${JDBC_DATABASE_URL:jdbc:postgresql://localhost:5433/homebase}
+    username: ${JDBC_DATABASE_USERNAME:homebase}
+    password: ${JDBC_DATABASE_PASSWORD:homebase}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8081/realms/homebase}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

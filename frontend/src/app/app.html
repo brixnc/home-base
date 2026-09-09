@@ -1,0 +1,242 @@
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand"><span class="brand-mark">H</span><span>homebase</span></div>
+    <div class="apartment-switcher">
+      <span class="eyebrow">YOUR APARTMENT</span><strong>{{ apartmentName() }}</strong
+      ><span class="online-dot"></span>
+    </div>
+    <nav aria-label="Main navigation">
+      @for (item of navigation; track item.route) {
+        <a
+          [routerLink]="item.route"
+          routerLinkActive="active"
+          [routerLinkActiveOptions]="{ exact: item.route === '/dashboard' }"
+          ><span class="nav-icon">{{ item.icon }}</span
+          >{{ item.label }}</a
+        >
+      }
+    </nav>
+    <div class="sidebar-bottom">
+      <a routerLink="/settings"><span class="nav-icon">⚙</span>Settings</a>
+      <button class="sign-out-button" type="button" (click)="signOut()">
+        <span class="nav-icon">↪</span>Sign out
+      </button>
+      <div class="profile-mini">
+        <span class="avatar coral">{{ getInitials(getDisplayName()) }}</span>
+        <div>
+          <strong>{{ getDisplayName() }}</strong
+          ><small>{{ apartmentAddress() }}</small>
+        </div>
+        <span>•••</span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="page-content">
+    <header class="topbar">
+      <div class="mobile-brand"><span class="brand-mark">H</span><span>homebase</span></div>
+      <div class="topbar-actions">
+        <button class="icon-button" aria-label="Notifications" (click)="navigateTo('/feed')">
+          ♧<span class="notification-dot"></span>
+        </button>
+        <button class="avatar coral" aria-label="Open profile" (click)="navigateTo('/settings')">
+          {{ getInitials(getDisplayName()) }}
+        </button>
+      </div>
+    </header>
+
+    @if (isDashboard()) {
+      <section class="dashboard">
+        <div class="welcome-row">
+          <div>
+            <p class="eyebrow">
+              {{ dashboard.dashboard()?.today ? dashboard.dashboard()?.today : 'TODAY' }}
+            </p>
+            <h1>Good morning, {{ getDisplayName() }} <span>✦</span></h1>
+            <p class="subheading">Here’s what’s happening at home today.</p>
+          </div>
+          <button class="primary-action" (click)="cycleMyStatus()">
+            <span class="status-dot home"></span> Update my status <span>⌄</span>
+          </button>
+        </div>
+
+        <div class="dashboard-grid">
+          <section class="panel presence-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">RIGHT NOW</p>
+                <h2>
+                  Who’s home
+                  <span class="count-pill">{{ homeCount() }}/{{ roommates().length || 3 }}</span>
+                </h2>
+              </div>
+              <button
+                class="more-button"
+                aria-label="More presence options"
+                (click)="navigateTo('/roommates')"
+              >
+                •••
+              </button>
+            </div>
+
+            <div class="roommate-list">
+              @for (roommate of roommates(); track roommate.name) {
+                <div class="roommate-row">
+                  <span class="avatar" [style.background]="roommate.color">{{
+                    roommate.initials
+                  }}</span>
+                  <div class="roommate-copy">
+                    <strong>{{ roommate.name }}</strong>
+                    <span
+                      ><i
+                        class="status-dot"
+                        [class.home]="roommate.status === 'Home'"
+                        [class.away]="roommate.status === 'Away'"
+                        [class.work]="roommate.status === 'At work'"
+                      ></i
+                      >{{ roommate.status }} · {{ roommate.detail }}</span
+                    >
+                  </div>
+                  <span class="row-arrow">›</span>
+                </div>
+              }
+            </div>
+            <a class="text-button" routerLink="/roommates">See all roommates <span>→</span></a>
+          </section>
+
+          <section class="panel event-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">UP NEXT</p>
+                <h2>Coming up</h2>
+              </div>
+              <a class="text-button" routerLink="/calendar">View calendar <span>→</span></a>
+            </div>
+
+            @if (upcomingEvents().length) {
+              @for (event of upcomingEvents().slice(0, 3); track event.id ?? event.title) {
+                <div class="event-line">
+                  <span class="tiny-calendar">▣</span>
+                  <div>
+                    <strong>{{ event.title }}</strong>
+                    <span
+                      >{{ event.date || event.startTime || 'Upcoming' }}
+                      @if (event.location) {
+                        · {{ event.location }}
+                      }
+                    </span>
+                  </div>
+                  <span class="row-arrow">›</span>
+                </div>
+              }
+            } @else {
+              <div class="empty-card">No upcoming events yet.</div>
+            }
+          </section>
+
+          <section class="panel away-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">HOUSE NOTES</p>
+                <h2>Apartment</h2>
+              </div>
+              <button
+                class="add-button"
+                aria-label="Edit apartment details"
+                (click)="navigateTo('/settings')"
+              >
+                +
+              </button>
+            </div>
+            <div class="away-card">
+              <span class="travel-icon">⌂</span>
+              <div>
+                <strong>{{ apartmentName() }}</strong
+                ><span>{{ apartmentAddress() }}</span>
+              </div>
+              <span class="row-arrow">›</span>
+            </div>
+            <div class="away-card">
+              <span class="travel-icon yellow">◌</span>
+              <div>
+                <strong>Wi‑Fi</strong
+                ><span>{{ dashboard.dashboard()?.apartment?.wifiName ?? 'Not set' }}</span>
+              </div>
+              <span class="row-arrow">›</span>
+            </div>
+            <a class="text-button" routerLink="/settings">View apartment details <span>→</span></a>
+          </section>
+
+          <section class="panel chores-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">HOUSE WORK</p>
+                <h2>
+                  Chores
+                  <span class="count-pill warm"
+                    >{{ chores().filter((item) => !item.completed).length }} due</span
+                  >
+                </h2>
+              </div>
+              <a class="text-button" routerLink="/chores">See all <span>→</span></a>
+            </div>
+
+            @if (chores().length) {
+              @for (item of chores().slice(0, 2); track item.id ?? item.title) {
+                <div class="chore-line">
+                  <span class="check-circle" [class.done]="item.completed"></span>
+                  <div>
+                    <strong>{{ item.title }}</strong>
+                    <span
+                      >{{ item.assignee || 'Unassigned' }} ·
+                      {{ item.dueDate || 'No due date' }}</span
+                    >
+                  </div>
+                  <span class="priority" [class.normal]="!item.completed">{{
+                    item.completed ? 'DONE' : 'OPEN'
+                  }}</span>
+                </div>
+              }
+            } @else {
+              <div class="empty-card">No chores scheduled.</div>
+            }
+          </section>
+
+          <section class="panel feed-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">FROM THE HOUSE</p>
+                <h2>Latest updates</h2>
+              </div>
+              <a class="text-button" routerLink="/feed">Open feed <span>→</span></a>
+            </div>
+
+            @if (dashboard.dashboard()?.notifications?.length) {
+              @for (
+                notification of dashboard.dashboard()?.notifications?.slice(0, 3) ?? [];
+                track notification.id ?? notification.title
+              ) {
+                <div class="feed-line">
+                  <span class="avatar small coral">{{
+                    notification.title.slice(0, 2).toUpperCase()
+                  }}</span>
+                  <div>
+                    <p>
+                      <strong>{{ notification.title }}</strong>
+                      {{ notification.message || 'New update from Homebase' }}
+                    </p>
+                    <span>{{ notification.read ? 'Read' : 'Unread' }}</span>
+                  </div>
+                </div>
+              }
+            } @else {
+              <div class="empty-card">No updates yet.</div>
+            }
+          </section>
+        </div>
+      </section>
+    }
+
+    <router-outlet />
+  </main>
+</div>

@@ -1,0 +1,15 @@
+{
+  "realm": "homebase",
+  "enabled": true,
+  "displayName": "Homebase Apartment",
+  "registrationAllowed": false,
+  "clients": [{"clientId":"homebase-web","name":"Homebase web","publicClient":true,"protocol":"openid-connect","redirectUris":["http://localhost:4201/*"],"webOrigins":["http://localhost:4201"],"standardFlowEnabled":true,"directAccessGrantsEnabled":true}],
+  "roles": {"realm":[{"name":"admin","description":"Full HomeBase application administrator"}]},
+  "users": [
+    {"username":"brian","enabled":true,"email":"brian@example.com","firstName":"Brian","lastName":"Parker","credentials":[{"type":"password","value":"brian123","temporary":false}],"realmRoles":["admin"]},
+    {"username":"alex","enabled":true,"email":"alex@example.com","firstName":"Alex","lastName":"Morgan","credentials":[{"type":"password","value":"alex123","temporary":false}]},
+    {"username":"sam","enabled":true,"email":"sam@example.com","firstName":"Sam","lastName":"Lee","credentials":[{"type":"password","value":"sam123","temporary":false}]},
+    {"username":"enrico","enabled":true,"email":"enrico@example.com","firstName":"Enrico","lastName":"Homebase","credentials":[{"type":"password","value":"enrico123","temporary":false}],"realmRoles":["admin"]},
+    {"username":"seraina","enabled":true,"email":"seraina@example.com","firstName":"Seraina","lastName":"Homebase","credentials":[{"type":"password","value":"seraina123","temporary":false}],"realmRoles":["admin"]}
+  ]
+}

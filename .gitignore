@@ -1,0 +1,13 @@
+.metals/
+.vscode/
+frontend/.git.backup/
+backend/.bloop/
+backend/target/
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+*.log
+NUL
+frontend-screen.png
+.env
+!.env.example
