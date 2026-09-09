@@ -438,7 +438,7 @@ public class HouseholdService {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("userId", profile.getId().toString());
         row.put("name", profile.getDisplayName());
-        row.put("status", presence != null ? presence.getStatus() : "AWAY");
+        row.put("status", toPublicStatus(presence != null ? presence.getStatus() : "AWAY"));
         row.put("note", presence != null ? presence.getNote() : null);
         row.put("backAt", presence != null && presence.getBackAt() != null ? presence.getBackAt().toString() : null);
         row.put("updatedAt", presence != null && presence.getUpdatedAt() != null ? presence.getUpdatedAt().toString() : null);
@@ -521,6 +521,17 @@ public class HouseholdService {
         row.put("emergencyContact", info != null ? info.getEmergencyContact() : null);
         row.put("sharedNotes", info != null ? info.getSharedNotes() : null);
         return row;
+    }
+
+    private String toPublicStatus(String status) {
+        if (status == null) {
+            return "AWAY";
+        }
+        return switch (status.trim().toUpperCase()) {
+            case "AT_WORK" -> "WORK";
+            case "AT_SCHOOL" -> "SCHOOL";
+            default -> status.trim().toUpperCase();
+        };
     }
 
     private Map<String, Object> toAbsenceMap(Absence absence, UserProfile currentUser) {

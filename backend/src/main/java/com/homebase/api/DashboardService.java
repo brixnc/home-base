@@ -48,7 +48,7 @@ public class DashboardService {
             row.put("id", profile.getId().toString());
             row.put("name", profile.getDisplayName());
             row.put("nickname", profile.getNickname());
-            row.put("status", status != null ? status.getStatus() : "AWAY");
+            row.put("status", toPublicStatus(status != null ? status.getStatus() : "AWAY"));
             row.put("detail", status != null && status.getNote() != null ? status.getNote() : "No update yet");
             row.put("note", status != null ? status.getNote() : null);
             row.put("backAt", status != null && status.getBackAt() != null ? status.getBackAt().toString() : null);
@@ -127,7 +127,10 @@ public class DashboardService {
             .filter(note -> note.getReadAt() == null)
             .count();
 
-        String status = presenceStatusRepository.findByUserProfileId(currentUser.getId()).map(PresenceStatus::getStatus).orElse("AWAY");
+        String status = presenceStatusRepository.findByUserProfileId(currentUser.getId())
+            .map(PresenceStatus::getStatus)
+            .map(this::toPublicStatus)
+            .orElse("AWAY");
         LocalDate today = LocalDate.now();
         boolean hasOpenChores = choreRepository.findAllByOrderByDueDateAscCreatedAtDesc().stream().anyMatch(chore -> !chore.isCompleted());
 
@@ -168,5 +171,16 @@ public class DashboardService {
         response.put("apartment", apartment);
         response.put("generatedAt", OffsetDateTime.now().toString());
         return response;
+    }
+
+    private String toPublicStatus(String status) {
+        if (status == null) {
+            return "AWAY";
+        }
+        return switch (status.trim().toUpperCase()) {
+            case "AT_WORK" -> "WORK";
+            case "AT_SCHOOL" -> "SCHOOL";
+            default -> status.trim().toUpperCase();
+        };
     }
 }
