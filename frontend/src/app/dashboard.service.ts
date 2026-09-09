@@ -1,5 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, signal } from '@angular/core';
+import { tap } from 'rxjs';
 
 export interface DashboardRoommate {
   id?: string;
@@ -147,20 +148,33 @@ export class DashboardService {
     });
   }
 
+  private refreshSharedState(options?: { currentUser?: boolean }): void {
+    this.loadDashboard();
+    if (options?.currentUser) {
+      this.loadCurrentUser();
+    }
+  }
+
   listChores() {
     return this.http.get<Chore[]>('http://localhost:8082/api/chores');
   }
 
   createChore(request: { title: string; description?: string; dueDate?: string }) {
-    return this.http.post<Chore>('http://localhost:8082/api/chores', request);
+    return this.http
+      .post<Chore>('http://localhost:8082/api/chores', request)
+      .pipe(tap(() => this.refreshSharedState()));
   }
 
   updateChore(id: string, request: { completed?: boolean; title?: string; dueDate?: string }) {
-    return this.http.put<Chore>(`http://localhost:8082/api/chores/${id}`, request);
+    return this.http
+      .put<Chore>(`http://localhost:8082/api/chores/${id}`, request)
+      .pipe(tap(() => this.refreshSharedState()));
   }
 
   deleteChore(id: string) {
-    return this.http.delete<void>(`http://localhost:8082/api/chores/${id}`);
+    return this.http
+      .delete<void>(`http://localhost:8082/api/chores/${id}`)
+      .pipe(tap(() => this.refreshSharedState()));
   }
 
   listEvents() {
@@ -174,11 +188,15 @@ export class DashboardService {
     location?: string;
     description?: string;
   }) {
-    return this.http.post<EventItem>('http://localhost:8082/api/events', request);
+    return this.http
+      .post<EventItem>('http://localhost:8082/api/events', request)
+      .pipe(tap(() => this.refreshSharedState()));
   }
 
   deleteEvent(id: string) {
-    return this.http.delete<void>(`http://localhost:8082/api/events/${id}`);
+    return this.http
+      .delete<void>(`http://localhost:8082/api/events/${id}`)
+      .pipe(tap(() => this.refreshSharedState()));
   }
 
   listShopping() {
@@ -186,18 +204,24 @@ export class DashboardService {
   }
 
   createShoppingItem(request: { name: string; quantity?: string; category?: string }) {
-    return this.http.post<ShoppingItem>('http://localhost:8082/api/shopping', request);
+    return this.http
+      .post<ShoppingItem>('http://localhost:8082/api/shopping', request)
+      .pipe(tap(() => this.refreshSharedState()));
   }
 
   updateShoppingItem(
     id: string,
     request: { purchased?: boolean; name?: string; quantity?: string; category?: string },
   ) {
-    return this.http.put<ShoppingItem>(`http://localhost:8082/api/shopping/${id}`, request);
+    return this.http
+      .put<ShoppingItem>(`http://localhost:8082/api/shopping/${id}`, request)
+      .pipe(tap(() => this.refreshSharedState()));
   }
 
   deleteShoppingItem(id: string) {
-    return this.http.delete<void>(`http://localhost:8082/api/shopping/${id}`);
+    return this.http
+      .delete<void>(`http://localhost:8082/api/shopping/${id}`)
+      .pipe(tap(() => this.refreshSharedState()));
   }
 
   listPresence() {
@@ -207,7 +231,9 @@ export class DashboardService {
   }
 
   updatePresence(request: { status: string; note?: string; backAt?: string }) {
-    return this.http.put('http://localhost:8082/api/presence/me', request);
+    return this.http
+      .put('http://localhost:8082/api/presence/me', request)
+      .pipe(tap(() => this.refreshSharedState({ currentUser: true })));
   }
 
   listNotifications() {
@@ -215,14 +241,15 @@ export class DashboardService {
   }
 
   markNotificationRead(id: string) {
-    return this.http.put<NotificationItem>(
-      `http://localhost:8082/api/notifications/${id}/read`,
-      {},
-    );
+    return this.http
+      .put<NotificationItem>(`http://localhost:8082/api/notifications/${id}/read`, {})
+      .pipe(tap(() => this.refreshSharedState()));
   }
 
   markAllNotificationsRead() {
-    return this.http.put('http://localhost:8082/api/notifications/read-all', {});
+    return this.http
+      .put('http://localhost:8082/api/notifications/read-all', {})
+      .pipe(tap(() => this.refreshSharedState()));
   }
 
   getApartment() {
@@ -230,6 +257,8 @@ export class DashboardService {
   }
 
   updateApartment(apartment: ApartmentInfo) {
-    return this.http.put<ApartmentInfo>('http://localhost:8082/api/apartment', apartment);
+    return this.http
+      .put<ApartmentInfo>('http://localhost:8082/api/apartment', apartment)
+      .pipe(tap(() => this.refreshSharedState()));
   }
 }
