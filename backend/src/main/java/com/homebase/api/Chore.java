@@ -36,6 +36,9 @@ public class Chore {
     @Column(name = "due_on")
     private LocalDate dueDate;
 
+    @Column(name = "priority", nullable = false, length = 20)
+    private String priority = "NORMAL";
+
     @Column(name = "completed", nullable = false)
     private boolean completed = false;
 
@@ -102,6 +105,14 @@ public class Chore {
 
     public boolean isCompleted() {
         return completed;
+    }
+
+    public String getPriority() {
+        return priority;
+    }
+
+    public void setPriority(String priority) {
+        this.priority = priority;
     }
 
     public void setCompleted(boolean completed) {

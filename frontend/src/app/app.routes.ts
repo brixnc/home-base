@@ -12,18 +12,43 @@ import {
 
 @Component({
   template: `
-    <main class="route-shell">
-      <div class="route-banner">
-        <p class="eyebrow">HOMEBASE</p>
-        <h1>Simple apartment navigation</h1>
-      </div>
-      <p class="route-copy">This section is ready for the next room-specific detail view.</p>
+    <main class="route-shell not-found">
+      <p class="eyebrow">HOMEBASE</p>
+      <h1>Page not found</h1>
+      <p class="route-copy">The page you requested does not exist or is no longer available.</p>
       <a class="text-button" routerLink="/dashboard">Back to dashboard <span>→</span></a>
     </main>
   `,
+  styles: `
+    .not-found {
+      max-width: 720px;
+      margin: 24px auto;
+      padding: 0 5% 48px;
+      color: #293530;
+    }
+    .eyebrow {
+      color: #78847d;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin: 8px 0;
+      font: 600 34px 'Space Grotesk', sans-serif;
+    }
+    .route-copy {
+      color: #78847d;
+    }
+    .text-button {
+      color: #dd7959;
+      text-decoration: none;
+      font-weight: 600;
+    }
+  `,
   imports: [RouterLink],
 })
-class EmptyPageComponent {}
+class NotFoundComponent {}
 
 @Component({
   template: '',
@@ -74,4 +99,10 @@ export const routes: Routes = [
     canActivate: [authGuard],
   },
   { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
+  {
+    path: '**',
+    title: 'Page not found · homebase',
+    component: NotFoundComponent,
+    canActivate: [authGuard],
+  },
 ];
