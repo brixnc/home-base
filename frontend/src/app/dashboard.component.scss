@@ -1,0 +1,123 @@
+:host { display: block; }
+
+.eyebrow { color: #8c9790; font-size: 10px; font-weight: 700; letter-spacing: .13em; margin: 0; }
+.avatar { display: inline-grid; place-items: center; width: 38px; height: 38px; border-radius: 12px; color: white; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+.avatar.small { width: 30px; height: 30px; border-radius: 9px; font-size: 9px; }
+.coral { background: #ef8b69; }
+
+.dashboard { max-width: 1180px; margin: 12px auto; padding: 0 5% 48px; }
+.welcome-row { display: flex; justify-content: space-between; align-items: end; margin-bottom: 24px; gap: 20px; }
+.welcome-row h1 { margin: 8px 0 8px; color: #25312d; font: 600 clamp(25px, 3vw, 34px) 'Space Grotesk', sans-serif; letter-spacing: -.045em; }
+.welcome-row h1 span { color: #ef8b69; font-size: .7em; vertical-align: top; }
+.subheading { color: #829089; margin: 0; font-size: 13px; }
+.primary-action { display: flex; gap: 9px; align-items: center; border: 1px solid #d7ddd7; border-radius: 8px; padding: 11px 14px; color: #48554e; background: #fbfaf6; font-size: 12px; box-shadow: 0 2px 4px #23352b0a; }
+.status-dot { width: 7px; height: 7px; display: inline-block; border-radius: 50%; background: #bdc8c0; margin-right: 7px; }
+.status-dot.home { background: #72b98f; }
+.status-dot.away { background: #e69a5b; }
+.status-dot.work { background: #d1b04e; }
+.status-dot.school { background: #7690e1; }
+.status-dot.traveling { background: #a678d6; }
+.status-dot.dnd { background: #d2645f; }
+
+.quick-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 24px; }
+.quick-action { border: 1px solid #d7ddd7; background: #fff; color: #34413b; border-radius: 999px; padding: 10px 14px; font: inherit; font-size: 12px; }
+
+.empty-card { padding: 18px; border-radius: 8px; background: #fbfaf6; color: #78847d; }
+.empty-card.error-card { color: #b4422d; }
+
+.dashboard-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 18px; }
+.panel { background: #fbfaf6; border: 1px solid #e8e8df; border-radius: 11px; padding: 22px; box-shadow: 0 4px 18px #23352b06; }
+.presence-panel, .event-panel { grid-column: span 3; min-height: 288px; }
+.chores-panel, .shopping-panel, .away-panel { grid-column: span 2; min-height: 270px; }
+/* Absences and Latest updates close the dashboard at full width. */
+.absence-panel { grid-column: 1 / -1; }
+.feed-panel { grid-column: 1 / -1; }
+.panel-heading { display: flex; justify-content: space-between; align-items: start; margin-bottom: 18px; }
+.panel h2 { margin: 6px 0 0; color: #293530; font: 600 19px 'Space Grotesk', sans-serif; letter-spacing: -.035em; }
+.count-pill { background: #e7f1e9; color: #57906e; padding: 4px 7px; margin-left: 4px; border-radius: 5px; font: 600 10px 'DM Sans'; vertical-align: middle; letter-spacing: 0; }
+.count-pill.warm { background: #f9ebe2; color: #c8734f; }
+.more-button, .add-button { border: 0; background: transparent; color: #65716b; position: relative; }
+.more-button { letter-spacing: 2px; }
+.add-button { font-size: 23px; color: #e17b5c; }
+
+.roommate-list { display: grid; gap: 2px; }
+.roommate-row, .event-line, .away-card, .chore-line { display: flex; align-items: center; gap: 11px; padding: 10px 0; }
+.roommate-copy, .event-line > div, .away-card > div, .chore-line > div { display: grid; gap: 3px; flex: 1; }
+.roommate-copy strong, .event-line strong, .away-card strong, .chore-line strong { color: #34413b; font-size: 12px; }
+.roommate-copy span, .event-line span, .away-card span, .chore-line span { color: #8b958e; font-size: 11px; }
+.you-label { color: #e78360 !important; font-size: 8px !important; background: #fae6db; margin-left: 5px; padding: 2px 4px; border-radius: 3px; font-weight: 700; }
+.row-arrow { flex: initial !important; color: #a4ada7 !important; font-size: 20px !important; }
+.text-button { border: 0; background: transparent; color: #dd7959; font-size: 11px; font-weight: 600; padding: 10px 0 0; text-decoration: none; }
+.text-button span { font-size: 15px; margin-left: 5px; }
+.event-line { border-bottom: 1px solid #eff0e9; }
+.tiny-calendar, .travel-icon { width: 27px; height: 27px; display: grid; place-items: center; border-radius: 7px; background: #e7f0eb; color: #659b79 !important; font-size: 14px !important; }
+.travel-icon { background: #e8f0eb; font-size: 13px !important; }
+.travel-icon.yellow { background: #f5ebd4; color: #b9934c !important; }
+.away-card { background: #f6f6ef; padding: 11px; border-radius: 7px; margin-bottom: 8px; }
+.check-circle { width: 17px; height: 17px; border: 1.5px solid #c5cec7; border-radius: 50%; flex-shrink: 0; }
+.check-circle.done { background: #72b98f; border-color: #72b98f; }
+.priority { font-size: 8px !important; font-weight: 700; letter-spacing: .07em; color: #da7959 !important; }
+.priority.normal { color: #789f86 !important; }
+.section-label { margin-top: 10px; color: #8b958e; font-size: 10px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
+.points-strip { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 14px -22px -22px; padding: 12px 22px; background: #f4eee1; color: #9a8055; font-size: 10px; }
+.points-strip strong { color: #755f3f; font-size: 11px; }
+.feed-line { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid #eff0e9; }
+.feed-line p { margin: 0 0 3px; color: #647069; font-size: 11px; line-height: 1.45; }
+.feed-line p strong { color: #34413b; }
+.feed-line > div > span { color: #a0a8a2; font-size: 10px; }
+
+@media (max-width: 900px) {
+  .dashboard-grid { grid-template-columns: repeat(2, 1fr); }
+  .presence-panel, .event-panel, .away-panel, .chores-panel, .feed-panel { grid-column: span 1; }
+}
+@media (max-width: 640px) {
+  .dashboard { margin-top: 10px; padding: 0 16px 35px; }
+  .welcome-row { align-items: start; flex-direction: column; gap: 18px; margin-bottom: 20px; }
+  .welcome-row h1 { font-size: 27px; }
+  .primary-action { width: 100%; justify-content: center; }
+  .quick-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .quick-action { width: 100%; }
+  .dashboard-grid { display: block; }
+  .panel { margin-bottom: 14px; padding: 18px; }
+  .panel h2 { font-size: 18px; }
+  .points-strip { margin-left: -18px; margin-right: -18px; margin-bottom: -18px; padding-left: 18px; padding-right: 18px; }
+}
+
+/* ---- Status picker (replaces the old blind status cycling button) ---- */
+.status-picker { position: relative; }
+.primary-action { cursor: pointer; }
+.status-picker-label { font-weight: 600; }
+.chevron { margin-left: 2px; color: #8b958e; font-size: 10px; }
+.status-backdrop { position: fixed; inset: 0; z-index: 20; border: 0; padding: 0; background: transparent; cursor: default; }
+.status-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; min-width: 216px; padding: 8px; display: grid; gap: 2px; background: #fff; border: 1px solid #e1e5df; border-radius: 11px; box-shadow: 0 12px 32px #23352b1f; }
+.status-menu-title { margin: 4px 8px 6px; color: #8b958e; font-size: 10px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
+.status-option { display: flex; align-items: center; gap: 4px; width: 100%; padding: 10px 10px; border: 0; border-radius: 8px; background: transparent; color: #34413b; font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.status-option:hover:not(:disabled) { background: #f2f4f0; }
+.status-option.selected { background: #eef4ef; font-weight: 600; }
+.status-option:disabled { opacity: .55; cursor: wait; }
+.status-option-label { flex: 1; }
+.tick { color: #57906e; font-weight: 700; }
+
+/* ---- Planned absences ---- */
+.absence-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
+.absence-card { display: flex; align-items: center; gap: 11px; background: #f6f6ef; padding: 11px; border-radius: 7px; }
+.absence-card > div { display: grid; gap: 3px; flex: 1; min-width: 0; }
+.absence-card strong { color: #34413b; font-size: 12px; }
+.absence-card span { color: #8b958e; font-size: 11px; }
+.absence-card.active { background: #f7ece4; }
+.absence-card .travel-icon { background: #e8f0eb; }
+.absence-card.active .travel-icon { background: #f5ddd0; color: #c0714c !important; }
+
+/* ---- Latest updates at full width ---- */
+.feed-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 0 24px; }
+.feed-line.unread p strong { color: #c8734f; }
+
+@media (max-width: 900px) {
+  .status-menu { min-width: 200px; }
+}
+@media (max-width: 640px) {
+  .status-picker { width: 100%; }
+  .status-menu { left: 0; right: 0; min-width: 0; }
+  .status-option { padding: 13px 10px; font-size: 14px; }
+  .absence-list, .feed-grid { grid-template-columns: 1fr; }
+}

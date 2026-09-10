@@ -20,6 +20,7 @@ public class DashboardService {
     private final ShoppingItemRepository shoppingItemRepository;
     private final NotificationRepository notificationRepository;
     private final ApartmentInfoRepository apartmentInfoRepository;
+    private final AbsenceRepository absenceRepository;
 
     public DashboardService(
         UserProfileRepository userProfileRepository,
@@ -28,7 +29,8 @@ public class DashboardService {
         EventRepository eventRepository,
         ShoppingItemRepository shoppingItemRepository,
         NotificationRepository notificationRepository,
-        ApartmentInfoRepository apartmentInfoRepository
+        ApartmentInfoRepository apartmentInfoRepository,
+        AbsenceRepository absenceRepository
     ) {
         this.userProfileRepository = userProfileRepository;
         this.presenceStatusRepository = presenceStatusRepository;
@@ -37,6 +39,7 @@ public class DashboardService {
         this.shoppingItemRepository = shoppingItemRepository;
         this.notificationRepository = notificationRepository;
         this.apartmentInfoRepository = apartmentInfoRepository;
+        this.absenceRepository = absenceRepository;
     }
 
     @Transactional(readOnly = true)
@@ -48,7 +51,7 @@ public class DashboardService {
             row.put("id", profile.getId().toString());
             row.put("name", profile.getDisplayName());
             row.put("nickname", profile.getNickname());
-            row.put("status", toPublicStatus(status != null ? status.getStatus() : "AWAY"));
+            row.put("status", status != null && status.getStatus() != null ? status.getStatus() : "AWAY");
             row.put("detail", status != null && status.getNote() != null ? status.getNote() : "No update yet");
             row.put("note", status != null ? status.getNote() : null);
             row.put("backAt", status != null && status.getBackAt() != null ? status.getBackAt().toString() : null);
@@ -89,6 +92,8 @@ public class DashboardService {
                 row.put("location", event.getLocation());
                 row.put("creatorId", event.getCreator() != null ? event.getCreator().getId().toString() : null);
                 row.put("creatorName", event.getCreator() != null ? event.getCreator().getDisplayName() : "Unknown");
+                row.put("assigneeId", event.getAssignee() != null ? event.getAssignee().getId().toString() : null);
+                row.put("assigneeName", event.getAssignee() != null ? event.getAssignee().getDisplayName() : null);
                 row.put("past", event.getStartsAt().isBefore(LocalDateTime.now()));
                 return row;
             })
@@ -105,6 +110,8 @@ public class DashboardService {
                 row.put("purchased", item.getPurchasedAt() != null);
                 row.put("createdAt", item.getCreatedAt().toString());
                 row.put("addedBy", item.getAddedBy() != null ? item.getAddedBy().getDisplayName() : "Unknown");
+                row.put("assigneeId", item.getAssignee() != null ? item.getAssignee().getId().toString() : null);
+                row.put("assigneeName", item.getAssignee() != null ? item.getAssignee().getDisplayName() : null);
                 return row;
             })
             .collect(Collectors.toList());
@@ -129,10 +136,26 @@ public class DashboardService {
 
         String status = presenceStatusRepository.findByUserProfileId(currentUser.getId())
             .map(PresenceStatus::getStatus)
-            .map(this::toPublicStatus)
             .orElse("AWAY");
         LocalDate today = LocalDate.now();
         boolean hasOpenChores = choreRepository.findAllByOrderByDueDateAscCreatedAtDesc().stream().anyMatch(chore -> !chore.isCompleted());
+
+        List<Map<String, Object>> absences = absenceRepository
+            .findByEndsOnGreaterThanEqualOrderByStartsOnAscCreatedAtAsc(today)
+            .stream()
+            .limit(5)
+            .map(absence -> {
+                Map<String, Object> row = new HashMap<>();
+                row.put("id", absence.getId().toString());
+                row.put("userId", absence.getUserProfile().getId().toString());
+                row.put("userName", absence.getUserProfile().getDisplayName());
+                row.put("startsOn", absence.getStartsOn().toString());
+                row.put("endsOn", absence.getEndsOn().toString());
+                row.put("note", absence.getNote());
+                row.put("active", !absence.getStartsOn().isAfter(today) && !absence.getEndsOn().isBefore(today));
+                return row;
+            })
+            .collect(Collectors.toList());
 
         Map<String, Object> apartment = new HashMap<>();
         apartmentInfoRepository.findFirstByOrderByCreatedAtAsc().ifPresent(info -> {
@@ -168,19 +191,9 @@ public class DashboardService {
         response.put("purchasedShoppingCount", shoppingItemRepository.findAllByOrderByCreatedAtDesc().stream()
             .filter(item -> item.getPurchasedAt() != null)
             .count());
+        response.put("absences", absences);
         response.put("apartment", apartment);
         response.put("generatedAt", OffsetDateTime.now().toString());
         return response;
-    }
-
-    private String toPublicStatus(String status) {
-        if (status == null) {
-            return "AWAY";
-        }
-        return switch (status.trim().toUpperCase()) {
-            case "AT_WORK" -> "WORK";
-            case "AT_SCHOOL" -> "SCHOOL";
-            default -> status.trim().toUpperCase();
-        };
     }
 }

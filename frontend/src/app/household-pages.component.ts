@@ -1,9 +1,18 @@
+import { NgTemplateOutlet } from '@angular/common';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import {
+  PRESENCE_STATUS_OPTIONS,
+  PresenceStatusValue,
+  normalizePresenceStatus,
+  presenceStatusClass,
+  presenceStatusShortLabel,
+} from './presence-status';
 import { RouterLink } from '@angular/router';
 import {
   AbsenceItem,
   ApartmentInfo,
+  ApartmentUpdateRequest,
   DashboardService,
   EventItem,
   FeedPost,
@@ -46,6 +55,7 @@ const pageStyles = `
   .status-pill.work { background: #f4edd9; color: #a88732; }
   .status-pill.school { background: #e7edfb; color: #5b74c8; }
   .status-pill.traveling { background: #efe6fb; color: #8a63c7; }
+  .status-pill.dnd { background: #fae3e1; color: #b8524c; }
   .meta-pill { background: #edf0ec; color: #405048; }
   .badge.high { background: #fbe7df; color: #a84f35; }
   .badge.low { background: #ebf2ec; color: #5d8a69; }
@@ -59,20 +69,101 @@ const pageStyles = `
   .section h2 { margin: 0 0 8px; font: 600 20px 'Space Grotesk', sans-serif; color: #25312d; }
   .text-button { border: 0; background: transparent; color: #dd7959; font-size: 11px; font-weight: 600; padding: 10px 0 0; text-decoration: none; }
   .summary-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .wifi-actions { gap: 8px; }
+  .wifi-actions-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .wifi-hint { color: #78847d; font-size: 11px; font-weight: 400; text-transform: none; letter-spacing: 0; }
+  .wifi-hint.warning { color: #a84f35; }
   @media (max-width: 640px) {
     .route-shell { padding: 0 16px 35px; }
     form, .split-toolbar { display: grid; }
     input, textarea, select { width: 100%; box-sizing: border-box; min-width: 0; }
-    .item { align-items: flex-start; }
-    .item-actions { justify-content: start; }
+    /* Stack card content above its actions, otherwise the text column gets
+       squeezed to a few characters next to the buttons. */
+    .item { align-items: stretch; flex-direction: column; gap: 10px; }
+    .item-main { width: 100%; }
+    .item-actions { justify-content: flex-start; width: 100%; }
+    .item-actions button { flex: 1; min-width: 88px; }
     .grid-2 { grid-template-columns: 1fr; }
+  }
+`;
+
+interface CalendarDay {
+  key: string;
+  dayNumber: number;
+  label: string;
+  inCurrentMonth: boolean;
+  isToday: boolean;
+  events: EventItem[];
+}
+
+/** Local `YYYY-MM-DD` key, matching the `date` field the events API returns. */
+function toDayKey(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+function startOfMonth(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+const calendarStyles = `
+  .view-toggle { display: inline-flex; gap: 4px; padding: 4px; margin: 4px 0 8px; border: 1px solid #e1e5df; border-radius: 999px; background: #fbfaf6; }
+  .view-toggle button { border: 0; border-radius: 999px; background: transparent; color: #6e7a74; padding: 8px 18px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .view-toggle button.selected { background: #25312d; color: #fff; }
+
+  .calendar { margin: 8px 0 4px; }
+  .calendar-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+  .calendar-bar button.secondary { min-width: 42px; font-size: 18px; line-height: 1; }
+  .calendar-title { display: flex; align-items: center; gap: 10px; }
+  .calendar-title strong { font: 600 19px 'Space Grotesk', sans-serif; color: #25312d; }
+
+  .calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+  .calendar-weekday { padding: 6px 4px; color: #8b958e; font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; text-align: center; }
+  .calendar-day {
+    display: grid;
+    align-content: start;
+    gap: 4px;
+    min-height: 92px;
+    padding: 7px 6px;
+    border: 1px solid #e8e8df;
+    border-radius: 9px;
+    background: #fbfaf6;
+    color: #34413b;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .calendar-day:hover { border-color: #cdd6cd; }
+  .calendar-day.outside { background: #f6f6f1; color: #b3bdb6; }
+  .calendar-day.today .calendar-day-number { background: #ef8b69; color: #fff; }
+  .calendar-day.selected { border-color: #dd7959; box-shadow: 0 0 0 1px #dd7959; }
+  .calendar-day-number { display: inline-grid; place-items: center; width: 23px; height: 23px; border-radius: 50%; font-size: 12px; font-weight: 600; }
+  .calendar-day-events { display: grid; gap: 3px; min-width: 0; }
+  .calendar-chip { overflow: hidden; padding: 2px 5px; border-radius: 4px; background: #e7f0eb; color: #4d7c62; font-size: 10px; white-space: nowrap; text-overflow: ellipsis; }
+  .calendar-more { color: #8b958e; font-size: 9px; font-weight: 700; }
+  .calendar-dot { display: none; }
+
+  .calendar-selection { margin-top: 18px; display: grid; gap: 9px; }
+  .calendar-selection h2 { margin: 0; font: 600 16px 'Space Grotesk', sans-serif; color: #25312d; }
+
+  @media (max-width: 640px) {
+    /* A full month grid with titles is unreadable on a phone: show compact
+       day cells with an event dot, and the details for the selected day below. */
+    .calendar-grid { gap: 3px; }
+    .calendar-day { min-height: 46px; justify-items: center; align-content: center; gap: 3px; padding: 5px 2px; }
+    .calendar-day-events { display: none; }
+    .calendar-dot { display: block; width: 5px; height: 5px; border-radius: 50%; background: #dd7959; }
+    .calendar-weekday { font-size: 9px; letter-spacing: .04em; }
+    .view-toggle { width: 100%; justify-content: stretch; }
+    .view-toggle button { flex: 1; }
   }
 `;
 
 @Component({
   selector: 'app-calendar',
-  imports: [FormsModule],
-  styles: pageStyles,
+  imports: [FormsModule, NgTemplateOutlet],
+  styles: [pageStyles, calendarStyles],
   template: `
     <main class="route-shell">
       <header class="route-banner">
@@ -80,6 +171,121 @@ const pageStyles = `
         <h1>Calendar</h1>
         <p class="route-copy">Keep apartment events in one shared place.</p>
       </header>
+
+      <div class="view-toggle" role="group" aria-label="Calendar view">
+        <button
+          type="button"
+          [class.selected]="viewMode() === 'CALENDAR'"
+          [attr.aria-pressed]="viewMode() === 'CALENDAR'"
+          (click)="viewMode.set('CALENDAR')"
+        >
+          Calendar
+        </button>
+        <button
+          type="button"
+          [class.selected]="viewMode() === 'LIST'"
+          [attr.aria-pressed]="viewMode() === 'LIST'"
+          (click)="viewMode.set('LIST')"
+        >
+          List
+        </button>
+      </div>
+
+      @if (viewMode() === 'CALENDAR') {
+        <section class="calendar" aria-label="Month view">
+          <div class="calendar-bar">
+            <button class="secondary" type="button" aria-label="Previous month" (click)="previousMonth()">
+              ‹
+            </button>
+            <div class="calendar-title">
+              <strong>{{ monthLabel() }}</strong>
+              @if (!isCurrentMonth()) {
+                <button class="ghost" type="button" (click)="goToToday()">Today</button>
+              }
+            </div>
+            <button class="secondary" type="button" aria-label="Next month" (click)="nextMonth()">
+              ›
+            </button>
+          </div>
+
+          <div class="calendar-grid" role="grid">
+            @for (weekday of weekdayLabels; track weekday) {
+              <div class="calendar-weekday" role="columnheader">{{ weekday }}</div>
+            }
+            @for (week of calendarWeeks(); track week[0].key) {
+              @for (day of week; track day.key) {
+                <button
+                  type="button"
+                  role="gridcell"
+                  class="calendar-day"
+                  [class.outside]="!day.inCurrentMonth"
+                  [class.today]="day.isToday"
+                  [class.selected]="day.key === selectedDay()"
+                  [class.has-events]="day.events.length > 0"
+                  [attr.aria-label]="day.label + ', ' + day.events.length + ' events'"
+                  (click)="selectDay(day.key)"
+                >
+                  <span class="calendar-day-number">{{ day.dayNumber }}</span>
+                  @if (day.events.length) {
+                    <span class="calendar-day-events">
+                      @for (event of day.events.slice(0, 2); track event.id) {
+                        <span class="calendar-chip">{{ event.title }}</span>
+                      }
+                      @if (day.events.length > 2) {
+                        <span class="calendar-more">+{{ day.events.length - 2 }}</span>
+                      }
+                    </span>
+                    <span class="calendar-dot" aria-hidden="true"></span>
+                  }
+                </button>
+              }
+            }
+          </div>
+
+          <div class="calendar-selection">
+            <h2>{{ selectedDayLabel() }}</h2>
+            @for (event of selectedDayEvents(); track event.id) {
+              <article class="item">
+                <div class="item-main">
+                  <div class="panel-title">
+                    <strong>{{ event.title }}</strong>
+                    <span class="meta-pill">{{ event.past ? 'PAST' : 'UPCOMING' }}</span>
+                  </div>
+                  <small
+                    >{{ formatDateTime(event.startTime) }}
+                    @if (event.endTime) {
+                      → {{ formatDateTime(event.endTime) }}
+                    }
+                    @if (event.location) {
+                      · {{ event.location }}
+                    }
+                  </small>
+                  @if (event.description) {
+                    <p>{{ event.description }}</p>
+                  }
+                  <small>
+                    Created by {{ event.creatorName || 'Unknown' }}
+                    @if (event.assigneeName) {
+                      · Assigned to {{ event.assigneeName }}
+                    }
+                  </small>
+                </div>
+                @if (event.creatorId === dashboard.currentUser()?.id) {
+                  <div class="item-actions">
+                    <button class="secondary" (click)="startEdit(event)" type="button">Edit</button>
+                    <button class="danger" (click)="remove(event)" type="button">Delete</button>
+                  </div>
+                }
+              </article>
+              @if (editingId() === event.id) {
+                <ng-container [ngTemplateOutlet]="editForm" [ngTemplateOutletContext]="{ $implicit: event }" />
+              }
+            } @empty {
+              <p class="empty">No events on this day.</p>
+            }
+          </div>
+        </section>
+      }
 
       <div class="toolbar">
         <label>
@@ -108,6 +314,14 @@ const pageStyles = `
           <label
             >Location<input [(ngModel)]="location" name="location" placeholder="Optional"
           /></label>
+          <label
+            >Assigned to<select [(ngModel)]="assigneeId" name="assigneeId">
+              <option value="">Nobody in particular</option>
+              @for (roommate of roommates(); track roommate.userId) {
+                <option [value]="roommate.userId">{{ roommate.name }}</option>
+              }
+            </select></label
+          >
           <label class="full"
             >Description<textarea
               [(ngModel)]="description"
@@ -131,69 +345,90 @@ const pageStyles = `
         <p class="empty">Loading events…</p>
       }
 
-      <section class="list">
-        @for (event of visibleEvents(); track event.id) {
-          <article class="item">
-            <div class="item-main">
-              <div class="panel-title">
-                <strong>{{ event.title }}</strong>
-                <span class="meta-pill">{{ event.past ? 'PAST' : 'UPCOMING' }}</span>
-              </div>
-              <small
-                >{{ formatDateTime(event.startTime) }}
-                @if (event.endTime) {
-                  → {{ formatDateTime(event.endTime) }}
+      @if (viewMode() === 'LIST') {
+        <section class="list">
+          @for (event of visibleEvents(); track event.id) {
+            <article class="item">
+              <div class="item-main">
+                <div class="panel-title">
+                  <strong>{{ event.title }}</strong>
+                  <span class="meta-pill">{{ event.past ? 'PAST' : 'UPCOMING' }}</span>
+                </div>
+                <small
+                  >{{ formatDateTime(event.startTime) }}
+                  @if (event.endTime) {
+                    → {{ formatDateTime(event.endTime) }}
+                  }
+                  @if (event.location) {
+                    · {{ event.location }}
+                  }
+                </small>
+                @if (event.description) {
+                  <p>{{ event.description }}</p>
                 }
-                @if (event.location) {
-                  · {{ event.location }}
-                }
-              </small>
-              @if (event.description) {
-                <p>{{ event.description }}</p>
-              }
-              <small>Created by {{ event.creatorName || 'Unknown' }}</small>
-            </div>
-            <div class="item-actions">
-              @if (event.creatorId === dashboard.currentUser()?.id) {
-                <button class="secondary" (click)="startEdit(event)" type="button">Edit</button>
-              }
-              @if (event.creatorId === dashboard.currentUser()?.id) {
-                <button class="danger" (click)="remove(event)" type="button">Delete</button>
-              }
-            </div>
-          </article>
-          @if (editingId() === event.id) {
-            <form class="inline-form" (ngSubmit)="saveEdit(event)">
-              <div class="grid-2">
-                <label class="full">Title<input [(ngModel)]="editTitle" name="editTitle" required /></label>
-                <label>Starts<input [(ngModel)]="editStartTime" name="editStartTime" type="datetime-local" required /></label>
-                <label>Ends<input [(ngModel)]="editEndTime" name="editEndTime" type="datetime-local" /></label>
-                <label>Location<input [(ngModel)]="editLocation" name="editLocation" /></label>
-                <label class="full">Description<textarea [(ngModel)]="editDescription" name="editDescription"></textarea></label>
+                <small>
+                  Created by {{ event.creatorName || 'Unknown' }}
+                  @if (event.assigneeName) {
+                    · Assigned to {{ event.assigneeName }}
+                  }
+                </small>
               </div>
               <div class="item-actions">
-                <button type="submit" [disabled]="saving()">Save changes</button>
-                <button class="secondary" type="button" (click)="cancelEdit()">Cancel</button>
+                @if (event.creatorId === dashboard.currentUser()?.id) {
+                  <button class="secondary" (click)="startEdit(event)" type="button">Edit</button>
+                }
+                @if (event.creatorId === dashboard.currentUser()?.id) {
+                  <button class="danger" (click)="remove(event)" type="button">Delete</button>
+                }
               </div>
-            </form>
+            </article>
+            @if (editingId() === event.id) {
+              <ng-container [ngTemplateOutlet]="editForm" [ngTemplateOutletContext]="{ $implicit: event }" />
+            }
+          } @empty {
+            @if (!loading()) {
+              <p class="empty">No events in this view yet.</p>
+            }
           }
-        } @empty {
-          @if (!loading()) {
-            <p class="empty">No events in this view yet.</p>
-          }
-        }
-      </section>
+        </section>
+      }
+
+      <ng-template #editForm let-event>
+        <form class="inline-form" (ngSubmit)="saveEdit(event)">
+          <div class="grid-2">
+            <label class="full">Title<input [(ngModel)]="editTitle" name="editTitle" required /></label>
+            <label>Starts<input [(ngModel)]="editStartTime" name="editStartTime" type="datetime-local" required /></label>
+            <label>Ends<input [(ngModel)]="editEndTime" name="editEndTime" type="datetime-local" /></label>
+            <label>Location<input [(ngModel)]="editLocation" name="editLocation" /></label>
+            <label
+              >Assigned to<select [(ngModel)]="editAssigneeId" name="editAssigneeId">
+                <option value="">Nobody in particular</option>
+                @for (roommate of roommates(); track roommate.userId) {
+                  <option [value]="roommate.userId">{{ roommate.name }}</option>
+                }
+              </select></label
+            >
+            <label class="full">Description<textarea [(ngModel)]="editDescription" name="editDescription"></textarea></label>
+          </div>
+          <div class="item-actions">
+            <button type="submit" [disabled]="saving()">Save changes</button>
+            <button class="secondary" type="button" (click)="cancelEdit()">Cancel</button>
+          </div>
+        </form>
+      </ng-template>
     </main>
   `,
 })
 export class CalendarComponent implements OnInit {
   protected readonly dashboard = inject(DashboardService);
   readonly events = signal<EventItem[]>([]);
+  readonly roommates = signal<RoommatePresence[]>([]);
   readonly saving = signal(false);
   readonly loading = signal(true);
   readonly error = signal<string | null>(null);
   readonly message = signal<string | null>(null);
   readonly filter = signal<'UPCOMING' | 'PAST' | 'ALL'>('UPCOMING');
+  readonly viewMode = signal<'CALENDAR' | 'LIST'>('CALENDAR');
   readonly editingId = signal<string | null>(null);
   readonly visibleEvents = computed(() => {
     const all = [...this.events()];
@@ -207,23 +442,118 @@ export class CalendarComponent implements OnInit {
     }
   });
 
+  readonly weekdayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  /** First day of the month currently shown in the grid. */
+  readonly monthCursor = signal(startOfMonth(new Date()));
+  readonly selectedDay = signal(toDayKey(new Date()));
+
+  /** Events bucketed by their local calendar date, as returned by the API. */
+  private readonly eventsByDay = computed(() => {
+    const map = new Map<string, EventItem[]>();
+    for (const event of this.events()) {
+      const key = event.date || (event.startTime ? event.startTime.slice(0, 10) : '');
+      if (!key) {
+        continue;
+      }
+      const bucket = map.get(key);
+      if (bucket) {
+        bucket.push(event);
+      } else {
+        map.set(key, [event]);
+      }
+    }
+    return map;
+  });
+
+  readonly calendarWeeks = computed(() => {
+    const cursor = this.monthCursor();
+    const year = cursor.getFullYear();
+    const month = cursor.getMonth();
+    const todayKey = toDayKey(new Date());
+    const byDay = this.eventsByDay();
+
+    // Monday-first grid: back up to the Monday on or before the 1st.
+    const leadingOffset = (new Date(year, month, 1).getDay() + 6) % 7;
+    const weeks: CalendarDay[][] = [];
+
+    for (let week = 0; week < 6; week++) {
+      const days: CalendarDay[] = [];
+      for (let weekday = 0; weekday < 7; weekday++) {
+        const date = new Date(year, month, 1 - leadingOffset + week * 7 + weekday);
+        const key = toDayKey(date);
+        days.push({
+          key,
+          dayNumber: date.getDate(),
+          label: date.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }),
+          inCurrentMonth: date.getMonth() === month,
+          isToday: key === todayKey,
+          events: byDay.get(key) ?? [],
+        });
+      }
+      // Drop a trailing week that belongs entirely to the next month.
+      if (week === 5 && days.every((day) => !day.inCurrentMonth)) {
+        break;
+      }
+      weeks.push(days);
+    }
+    return weeks;
+  });
+
+  readonly monthLabel = computed(() =>
+    this.monthCursor().toLocaleDateString([], { month: 'long', year: 'numeric' }),
+  );
+  readonly isCurrentMonth = computed(() => {
+    const now = startOfMonth(new Date());
+    const cursor = this.monthCursor();
+    return now.getFullYear() === cursor.getFullYear() && now.getMonth() === cursor.getMonth();
+  });
+  readonly selectedDayEvents = computed(() => this.eventsByDay().get(this.selectedDay()) ?? []);
+  readonly selectedDayLabel = computed(() => {
+    const [year, month, day] = this.selectedDay().split('-').map(Number);
+    return new Date(year, month - 1, day).toLocaleDateString([], {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+    });
+  });
+
   title = '';
   startTime = '';
   endTime = '';
   location = '';
   description = '';
+  assigneeId = '';
 
   editTitle = '';
   editStartTime = '';
   editEndTime = '';
   editLocation = '';
   editDescription = '';
+  editAssigneeId = '';
 
   ngOnInit(): void {
     if (!this.dashboard.currentUser()) {
       this.dashboard.loadCurrentUser();
     }
     this.load();
+    this.loadRoommates();
+  }
+
+  selectDay(key: string): void {
+    this.selectedDay.set(key);
+  }
+
+  previousMonth(): void {
+    this.shiftMonth(-1);
+  }
+
+  nextMonth(): void {
+    this.shiftMonth(1);
+  }
+
+  goToToday(): void {
+    this.monthCursor.set(startOfMonth(new Date()));
+    this.selectedDay.set(toDayKey(new Date()));
   }
 
   create(): void {
@@ -237,6 +567,7 @@ export class CalendarComponent implements OnInit {
         endTime: this.endTime || undefined,
         location: this.location || undefined,
         description: this.description || undefined,
+        assigneeId: this.assigneeId || undefined,
       })
       .subscribe({
         next: (event) => {
@@ -246,6 +577,7 @@ export class CalendarComponent implements OnInit {
           this.endTime = '';
           this.location = '';
           this.description = '';
+          this.assigneeId = '';
           this.saving.set(false);
           this.message.set('Event added.');
           this.load();
@@ -264,6 +596,7 @@ export class CalendarComponent implements OnInit {
     this.editEndTime = this.toDateTimeInput(event.endTime);
     this.editLocation = event.location ?? '';
     this.editDescription = event.description ?? '';
+    this.editAssigneeId = event.assigneeId ?? '';
   }
 
   cancelEdit(): void {
@@ -280,6 +613,7 @@ export class CalendarComponent implements OnInit {
         endTime: this.editEndTime || null,
         location: this.editLocation || null,
         description: this.editDescription || null,
+        assigneeId: this.editAssigneeId || null,
       })
       .subscribe({
         next: (updated) => {
@@ -328,6 +662,11 @@ export class CalendarComponent implements OnInit {
     });
   }
 
+  private shiftMonth(delta: number): void {
+    const cursor = this.monthCursor();
+    this.monthCursor.set(new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1));
+  }
+
   private load(): void {
     this.loading.set(true);
     this.dashboard.listEvents().subscribe({
@@ -339,6 +678,13 @@ export class CalendarComponent implements OnInit {
         this.loading.set(false);
         this.error.set('Unable to load events.');
       },
+    });
+  }
+
+  private loadRoommates(): void {
+    this.dashboard.listPresence().subscribe({
+      next: (items) => this.roommates.set(items),
+      error: () => this.error.set('Unable to load roommates for assignment.'),
     });
   }
 
@@ -408,6 +754,13 @@ export class CalendarComponent implements OnInit {
               <option value="HOUSEHOLD">Household</option>
               <option value="OTHER">Other</option>
             </select></label
+          ><label
+            >Assigned to<select [(ngModel)]="assigneeId" name="assigneeId">
+              <option value="">Anyone</option>
+              @for (roommate of roommates(); track roommate.userId) {
+                <option [value]="roommate.userId">{{ roommate.name }}</option>
+              }
+            </select></label
           >
         </div>
         <button type="submit" [disabled]="saving()">
@@ -434,9 +787,12 @@ export class CalendarComponent implements OnInit {
                 <span class="meta-pill">{{ item.category }}</span>
               </div>
               <small
-                >{{ item.quantity || 'No quantity' }} ·
+                >{{ item.quantity || 'No quantity' }} · Added by
                 {{ item.addedByName || 'Unknown' }} · {{ formatDateTime(item.createdAt) }}</small
               >
+              @if (item.assigneeName) {
+                <small>Assigned to {{ item.assigneeName }}</small>
+              }
             </div>
             <div class="item-actions">
               <button class="secondary" (click)="toggle(item)" type="button">
@@ -450,13 +806,21 @@ export class CalendarComponent implements OnInit {
               <div class="grid-2">
                 <label>Name<input [(ngModel)]="editName" name="editName" required /></label>
                 <label>Quantity<input [(ngModel)]="editQuantity" name="editQuantity" /></label>
-                <label class="full"
+                <label
                   >Category<select [(ngModel)]="editCategory" name="editCategory">
                     <option value="FOOD">Food</option>
                     <option value="CLEANING">Cleaning</option>
                     <option value="BATHROOM">Bathroom</option>
                     <option value="HOUSEHOLD">Household</option>
                     <option value="OTHER">Other</option>
+                  </select></label
+                >
+                <label
+                  >Assigned to<select [(ngModel)]="editAssigneeId" name="editAssigneeId">
+                    <option value="">Anyone</option>
+                    @for (roommate of roommates(); track roommate.userId) {
+                      <option [value]="roommate.userId">{{ roommate.name }}</option>
+                    }
                   </select></label
                 >
               </div>
@@ -486,16 +850,20 @@ export class ShoppingComponent implements OnInit {
   readonly sort = signal<'NEWEST' | 'CATEGORY' | 'NAME'>('NEWEST');
   readonly editingId = signal<string | null>(null);
   readonly visibleItems = computed(() => this.applyFiltersAndSort(this.items()));
+  readonly roommates = signal<RoommatePresence[]>([]);
 
   name = '';
   quantity = '';
   category: ShoppingCategory = 'FOOD';
+  assigneeId = '';
   editName = '';
   editQuantity = '';
   editCategory: ShoppingCategory = 'FOOD';
+  editAssigneeId = '';
 
   ngOnInit(): void {
     this.load();
+    this.loadRoommates();
   }
 
   create(): void {
@@ -507,6 +875,7 @@ export class ShoppingComponent implements OnInit {
         name: this.name.trim(),
         quantity: this.quantity || undefined,
         category: this.category,
+        assigneeId: this.assigneeId || undefined,
       })
       .subscribe({
         next: (item) => {
@@ -514,6 +883,7 @@ export class ShoppingComponent implements OnInit {
           this.name = '';
           this.quantity = '';
           this.category = 'FOOD';
+          this.assigneeId = '';
           this.saving.set(false);
           this.message.set('Shopping item added.');
           this.load();
@@ -540,6 +910,7 @@ export class ShoppingComponent implements OnInit {
     this.editName = item.name;
     this.editQuantity = item.quantity ?? '';
     this.editCategory = item.category;
+    this.editAssigneeId = item.assigneeId ?? '';
   }
 
   cancelEdit(): void {
@@ -552,6 +923,7 @@ export class ShoppingComponent implements OnInit {
         name: this.editName.trim(),
         quantity: this.editQuantity || null,
         category: this.editCategory,
+        assigneeId: this.editAssigneeId || null,
       })
       .subscribe({
         next: (updated) => {
@@ -603,6 +975,13 @@ export class ShoppingComponent implements OnInit {
     });
   }
 
+  private loadRoommates(): void {
+    this.service.listPresence().subscribe({
+      next: (items) => this.roommates.set(items),
+      error: () => this.error.set('Unable to load roommates for assignment.'),
+    });
+  }
+
   private applyFiltersAndSort(items: ShoppingItem[]): ShoppingItem[] {
     let result = [...items];
     if (this.filter() === 'NEEDED') {
@@ -639,11 +1018,9 @@ export class ShoppingComponent implements OnInit {
         <div class="grid-2">
           <label
             >Your status<select [(ngModel)]="status" name="status">
-              <option value="HOME">HOME</option>
-              <option value="AWAY">AWAY</option>
-              <option value="WORK">WORK</option>
-              <option value="SCHOOL">SCHOOL</option>
-              <option value="TRAVELING">TRAVELING</option>
+              @for (option of statusOptions; track option.value) {
+                <option [value]="option.value">{{ option.label }}</option>
+              }
             </select></label
           >
           <label
@@ -753,7 +1130,8 @@ export class RoommatesComponent implements OnInit {
   readonly loading = signal(true);
   readonly saving = signal(false);
   readonly editingAbsenceId = signal<string | null>(null);
-  status = 'HOME';
+  readonly statusOptions = PRESENCE_STATUS_OPTIONS;
+  status: PresenceStatusValue = 'HOME';
   note = '';
   backAt = '';
   absenceStartsOn = '';
@@ -874,11 +1252,11 @@ export class RoommatesComponent implements OnInit {
   }
 
   displayStatus(value: string): string {
-    return this.toDisplayStatus(value);
+    return presenceStatusShortLabel(value);
   }
 
   statusClass(value: string): string {
-    return this.toDisplayStatus(value).toLowerCase();
+    return presenceStatusClass(value);
   }
 
   private loadAll(): void {
@@ -893,7 +1271,7 @@ export class RoommatesComponent implements OnInit {
         this.roommates.set(items);
         const mine = items.find((item) => item.isCurrentUser);
         if (mine) {
-          this.status = this.toDisplayStatus(mine.status);
+          this.status = normalizePresenceStatus(mine.status);
           this.note = mine.note ?? '';
           this.backAt = this.toDateTimeInput(mine.backAt);
         }
@@ -911,19 +1289,6 @@ export class RoommatesComponent implements OnInit {
       next: (items) => this.absences.set(items),
       error: () => this.error.set('Unable to load absences.'),
     });
-  }
-
-  private toDisplayStatus(value: string): string {
-    switch (value.toUpperCase()) {
-      case 'AT_WORK':
-      case 'WORK':
-        return 'WORK';
-      case 'AT_SCHOOL':
-      case 'SCHOOL':
-        return 'SCHOOL';
-      default:
-        return value.toUpperCase();
-    }
   }
 
   private toDateTimeInput(value?: string | null): string {
@@ -1151,16 +1516,42 @@ export class FeedComponent implements OnInit {
           ><label>Wi-Fi name<input [(ngModel)]="apartment.wifiName" name="wifiName" /></label
           ><label
             >Wi-Fi password<input
-              [(ngModel)]="apartment.wifiPassword"
+              [ngModel]="wifiPasswordInput()"
+              (ngModelChange)="onWifiPasswordInput($event)"
               [type]="showWifiPassword() ? 'text' : 'password'"
               name="wifiPassword"
-              [placeholder]="apartment.hasWifiPassword && !showWifiPassword() ? 'Saved password hidden' : ''"
+              autocomplete="off"
+              [placeholder]="wifiPasswordPlaceholder()"
           /></label>
-          <label class="full"
-            ><button class="secondary" type="button" (click)="toggleWifiPassword()">
-              {{ showWifiPassword() ? 'Hide password' : apartment.hasWifiPassword ? 'Reveal saved password' : 'Add password' }}
-            </button></label
-          >
+          <label class="full wifi-actions">
+            <span class="wifi-actions-row">
+              <button class="secondary" type="button" (click)="toggleWifiPassword()">
+                {{
+                  showWifiPassword()
+                    ? 'Hide password'
+                    : apartment.hasWifiPassword
+                      ? 'Reveal saved password'
+                      : 'Show while typing'
+                }}
+              </button>
+              @if (apartment.hasWifiPassword && !removingWifiPassword()) {
+                <button class="danger" type="button" (click)="removeWifiPassword()">
+                  Remove saved password
+                </button>
+              }
+            </span>
+            @if (removingWifiPassword()) {
+              <small class="wifi-hint warning"
+                >The saved Wi-Fi password will be removed when you save.</small
+              >
+            } @else if (wifiPasswordDirty()) {
+              <small class="wifi-hint">The Wi-Fi password will be replaced when you save.</small>
+            } @else if (apartment.hasWifiPassword) {
+              <small class="wifi-hint">A password is saved. It stays unchanged unless you edit it.</small>
+            } @else {
+              <small class="wifi-hint">No Wi-Fi password saved yet.</small>
+            }
+          </label>
           <label
             >Landlord contact<input
               [(ngModel)]="apartment.landlordContact"
@@ -1169,8 +1560,7 @@ export class FeedComponent implements OnInit {
             >Emergency contact<input
               [(ngModel)]="apartment.emergencyContact"
               name="emergencyContact" /></label
-          ><label
-            class="full"
+          ><label class="full"
             >Shared notes<textarea
               [(ngModel)]="apartment.sharedNotes"
               name="sharedNotes"
@@ -1194,6 +1584,17 @@ export class SettingsComponent implements OnInit {
   readonly saving = signal(false);
   readonly loading = signal(true);
   readonly showWifiPassword = signal(false);
+
+  /**
+   * The password field is intentionally kept out of `apartment`. The apartment
+   * GET never returns the plaintext password, so binding it to the shared model
+   * used to send an empty value back and wipe the stored one. It is now only
+   * sent when the user actually edited it or asked for it to be removed.
+   */
+  readonly wifiPasswordInput = signal('');
+  readonly wifiPasswordDirty = signal(false);
+  readonly removingWifiPassword = signal(false);
+
   apartment: ApartmentInfo = { name: 'Homebase' };
 
   ngOnInit(): void {
@@ -1209,16 +1610,32 @@ export class SettingsComponent implements OnInit {
     });
   }
 
+  wifiPasswordPlaceholder(): string {
+    if (this.removingWifiPassword()) {
+      return 'Will be removed on save';
+    }
+    if (this.apartment.hasWifiPassword && !this.wifiPasswordDirty()) {
+      return 'Saved password hidden';
+    }
+    return '';
+  }
+
+  onWifiPasswordInput(value: string): void {
+    this.wifiPasswordInput.set(value);
+    this.wifiPasswordDirty.set(true);
+    this.removingWifiPassword.set(false);
+  }
+
+  /** Revealing or hiding is display-only and never touches the stored value. */
   toggleWifiPassword(): void {
     if (this.showWifiPassword()) {
       this.showWifiPassword.set(false);
-      this.apartment.wifiPassword = '';
       return;
     }
-    if (this.apartment.hasWifiPassword) {
+    if (this.apartment.hasWifiPassword && !this.wifiPasswordDirty()) {
       this.service.revealApartmentPassword().subscribe({
         next: (response) => {
-          this.apartment.wifiPassword = response.wifiPassword ?? '';
+          this.wifiPasswordInput.set(response.wifiPassword ?? '');
           this.showWifiPassword.set(true);
         },
         error: () => this.error.set('Unable to reveal the Wi-Fi password.'),
@@ -1228,18 +1645,45 @@ export class SettingsComponent implements OnInit {
     this.showWifiPassword.set(true);
   }
 
+  removeWifiPassword(): void {
+    if (typeof window !== 'undefined' && !window.confirm('Remove the saved Wi-Fi password?')) {
+      return;
+    }
+    this.wifiPasswordInput.set('');
+    this.wifiPasswordDirty.set(false);
+    this.removingWifiPassword.set(true);
+    this.showWifiPassword.set(false);
+  }
+
   save(): void {
     this.saving.set(true);
     this.saved.set(false);
     this.error.set(null);
-    this.service.updateApartment(this.apartment).subscribe({
+
+    const request: ApartmentUpdateRequest = {
+      name: this.apartment.name,
+      address: this.apartment.address ?? null,
+      wifiName: this.apartment.wifiName ?? null,
+      landlordContact: this.apartment.landlordContact ?? null,
+      emergencyContact: this.apartment.emergencyContact ?? null,
+      sharedNotes: this.apartment.sharedNotes ?? null,
+    };
+    // Only an explicit edit or removal sends the key at all.
+    if (this.removingWifiPassword()) {
+      request.wifiPassword = '';
+    } else if (this.wifiPasswordDirty()) {
+      request.wifiPassword = this.wifiPasswordInput();
+    }
+
+    this.service.updateApartment(request).subscribe({
       next: (apartment) => {
         this.apartment = { ...this.apartment, ...apartment };
         this.saving.set(false);
         this.saved.set(true);
-        if (!this.showWifiPassword()) {
-          this.apartment.wifiPassword = '';
-        }
+        this.wifiPasswordDirty.set(false);
+        this.removingWifiPassword.set(false);
+        this.showWifiPassword.set(false);
+        this.wifiPasswordInput.set('');
       },
       error: (response) => {
         this.saving.set(false);

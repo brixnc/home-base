@@ -1,8 +1,10 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, signal } from '@angular/core';
 import { tap } from 'rxjs';
+import { PresenceStatusValue } from './presence-status';
 
-export type PresenceStatus = 'HOME' | 'AWAY' | 'AT_WORK' | 'AT_SCHOOL' | 'TRAVELING';
+/** Canonical presence values live in presence-status.ts (single source of truth). */
+export type PresenceStatus = PresenceStatusValue;
 export type ChorePriority = 'LOW' | 'NORMAL' | 'HIGH';
 export type ShoppingCategory = 'FOOD' | 'CLEANING' | 'BATHROOM' | 'HOUSEHOLD' | 'OTHER';
 
@@ -20,6 +22,8 @@ export interface DashboardRoommate {
 export interface DashboardEventItem {
   id?: string;
   title: string;
+  assigneeId?: string | null;
+  assigneeName?: string | null;
   date?: string;
   startTime?: string;
   endTime?: string | null;
@@ -46,11 +50,24 @@ export interface DashboardChoreItem {
 export interface DashboardShoppingItem {
   id?: string;
   name: string;
+  assigneeId?: string | null;
+  assigneeName?: string | null;
   quantity?: string | null;
   category?: ShoppingCategory | string;
   purchased?: boolean;
   addedBy?: string;
   createdAt?: string;
+}
+
+export interface DashboardAbsence {
+  id: string;
+  userId: string;
+  userName: string;
+  startsOn: string;
+  endsOn: string;
+  note?: string | null;
+  /** True when today falls inside the absence period. */
+  active?: boolean;
 }
 
 export interface DashboardResponse {
@@ -59,6 +76,7 @@ export interface DashboardResponse {
   chores: DashboardChoreItem[];
   shopping: DashboardShoppingItem[];
   notifications?: NotificationItem[];
+  absences?: DashboardAbsence[];
   apartment?: ApartmentInfo;
   unreadNotifications?: number;
   myStatus?: string;
@@ -88,6 +106,8 @@ export interface Chore {
 export interface EventItem {
   id: string;
   title: string;
+  assigneeId?: string | null;
+  assigneeName?: string | null;
   description?: string | null;
   date: string;
   startTime: string;
@@ -103,6 +123,8 @@ export interface EventItem {
 export interface ShoppingItem {
   id: string;
   name: string;
+  assigneeId?: string | null;
+  assigneeName?: string | null;
   quantity?: string | null;
   category: ShoppingCategory;
   purchased: boolean;
@@ -127,6 +149,23 @@ export interface ApartmentInfo {
   wifiName?: string | null;
   wifiPassword?: string | null;
   hasWifiPassword?: boolean;
+  landlordContact?: string | null;
+  emergencyContact?: string | null;
+  sharedNotes?: string | null;
+}
+
+/**
+ * Payload for PUT /api/apartment.
+ *
+ * `wifiPassword` is deliberately optional: omitting the key leaves the stored
+ * password untouched, `''` removes it and a value replaces it. The settings
+ * form only sends it when the user actually edited the field.
+ */
+export interface ApartmentUpdateRequest {
+  name: string;
+  address?: string | null;
+  wifiName?: string | null;
+  wifiPassword?: string;
   landlordContact?: string | null;
   emergencyContact?: string | null;
   sharedNotes?: string | null;
@@ -271,6 +310,7 @@ export class DashboardService {
     endTime?: string;
     location?: string;
     description?: string;
+    assigneeId?: string | null;
   }) {
     return this.http
       .post<EventItem>(`${this.apiBaseUrl}/events`, request)
@@ -285,6 +325,7 @@ export class DashboardService {
       endTime?: string | null;
       location?: string | null;
       description?: string | null;
+      assigneeId?: string | null;
     },
   ) {
     return this.http
@@ -302,7 +343,12 @@ export class DashboardService {
     return this.http.get<ShoppingItem[]>(`${this.apiBaseUrl}/shopping`);
   }
 
-  createShoppingItem(request: { name: string; quantity?: string; category?: ShoppingCategory }) {
+  createShoppingItem(request: {
+    name: string;
+    quantity?: string;
+    category?: ShoppingCategory;
+    assigneeId?: string | null;
+  }) {
     return this.http
       .post<ShoppingItem>(`${this.apiBaseUrl}/shopping`, request)
       .pipe(tap(() => this.refreshSharedState()));
@@ -310,7 +356,13 @@ export class DashboardService {
 
   updateShoppingItem(
     id: string,
-    request: { purchased?: boolean; name?: string; quantity?: string | null; category?: ShoppingCategory },
+    request: {
+      purchased?: boolean;
+      name?: string;
+      quantity?: string | null;
+      category?: ShoppingCategory;
+      assigneeId?: string | null;
+    },
   ) {
     return this.http
       .put<ShoppingItem>(`${this.apiBaseUrl}/shopping/${id}`, request)
@@ -359,9 +411,9 @@ export class DashboardService {
     );
   }
 
-  updateApartment(apartment: ApartmentInfo) {
+  updateApartment(request: ApartmentUpdateRequest) {
     return this.http
-      .put<ApartmentInfo>(`${this.apiBaseUrl}/apartment`, apartment)
+      .put<ApartmentInfo>(`${this.apiBaseUrl}/apartment`, request)
       .pipe(tap(() => this.refreshSharedState()));
   }
 

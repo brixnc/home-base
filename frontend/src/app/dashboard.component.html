@@ -1,0 +1,368 @@
+@if (dashboard.loading()) {
+  <section class="dashboard">
+    <div class="empty-card">Loading your apartment dashboard…</div>
+  </section>
+} @else if (dashboard.error()) {
+  <section class="dashboard">
+    <div class="empty-card error-card">{{ dashboard.error() }}</div>
+  </section>
+} @else {
+  <section class="dashboard">
+    <div class="welcome-row">
+      <div>
+        <p class="eyebrow">
+          {{ dashboard.dashboard()?.today ? dashboard.dashboard()?.today : 'TODAY' }}
+        </p>
+        <h1>Good morning, {{ getDisplayName() }} <span>✦</span></h1>
+        <p class="subheading">Here’s what’s happening at home today.</p>
+      </div>
+
+      <div class="status-picker">
+        <button
+          class="primary-action"
+          type="button"
+          aria-haspopup="menu"
+          [attr.aria-expanded]="statusPickerOpen()"
+          (click)="toggleStatusPicker()"
+        >
+          <span class="status-dot" [class]="statusClass(myStatus())"></span>
+          <span class="status-picker-label">{{ statusFullLabel(myStatus()) }}</span>
+          <span class="chevron" aria-hidden="true">▾</span>
+        </button>
+
+        @if (statusPickerOpen()) {
+          <button
+            class="status-backdrop"
+            type="button"
+            aria-label="Close status menu"
+            (click)="closeStatusPicker()"
+          ></button>
+          <div class="status-menu" role="menu">
+            <p class="status-menu-title">Set your status</p>
+            @for (option of statusOptions; track option.value) {
+              <button
+                class="status-option"
+                type="button"
+                role="menuitemradio"
+                [class.selected]="option.value === myStatus()"
+                [attr.aria-checked]="option.value === myStatus()"
+                [disabled]="savingStatus()"
+                (click)="selectStatus(option.value)"
+              >
+                <span class="status-dot" [class]="option.cssClass"></span>
+                <span class="status-option-label">{{ option.label }}</span>
+                @if (option.value === myStatus()) {
+                  <span class="tick" aria-hidden="true">✓</span>
+                }
+              </button>
+            }
+          </div>
+        }
+      </div>
+    </div>
+
+    @if (statusError()) {
+      <div class="empty-card error-card">{{ statusError() }}</div>
+    }
+
+    <div class="quick-actions">
+      <button class="quick-action" type="button" (click)="navigateTo('/chores')">Add chore</button>
+      <button class="quick-action" type="button" (click)="navigateTo('/calendar')">Add event</button>
+      <button class="quick-action" type="button" (click)="navigateTo('/shopping')">
+        Add shopping item
+      </button>
+      <button class="quick-action" type="button" (click)="navigateTo('/roommates')">
+        Update presence
+      </button>
+    </div>
+
+    <div class="dashboard-grid">
+      <section class="panel presence-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">RIGHT NOW</p>
+            <h2>
+              Who’s home
+              <span class="count-pill">{{ homeCount() }}/{{ roommates().length || 0 }}</span>
+            </h2>
+          </div>
+          <button
+            class="more-button"
+            aria-label="More presence options"
+            (click)="navigateTo('/roommates')"
+          >
+            •••
+          </button>
+        </div>
+
+        <div class="roommate-list">
+          @for (roommate of roommates(); track roommate.name) {
+            <div class="roommate-row">
+              <span class="avatar" [style.background]="roommate.color">{{ roommate.initials }}</span>
+              <div class="roommate-copy">
+                <strong>
+                  {{ roommate.name }}
+                  @if (roommate.isCurrentUser) {
+                    <span class="you-label">YOU</span>
+                  }
+                </strong>
+                <span>
+                  <i class="status-dot" [class]="statusClass(roommate.status)"></i
+                  >{{ statusLabel(roommate.status) }}
+                  @if (roommate.detail) {
+                    · {{ roommate.detail }}
+                  }
+                  @if (formatBackAt(roommate.backAt); as returnTime) {
+                    · {{ returnTime }}
+                  }
+                </span>
+              </div>
+              <span class="row-arrow">›</span>
+            </div>
+          } @empty {
+            <div class="empty-card">No roommate statuses yet.</div>
+          }
+        </div>
+        <a class="text-button" routerLink="/roommates">See all roommates <span>→</span></a>
+      </section>
+
+      <section class="panel event-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">UP NEXT</p>
+            <h2>Coming up</h2>
+          </div>
+          <a class="text-button" routerLink="/calendar">View calendar <span>→</span></a>
+        </div>
+
+        @if (upcomingEvents().length) {
+          @for (event of upcomingEvents().slice(0, 3); track event.id ?? event.title) {
+            <div class="event-line">
+              <span class="tiny-calendar">▣</span>
+              <div>
+                <strong>{{ event.title }}</strong>
+                <span
+                  >{{ formatEventDate(event) }}
+                  @if (event.location) {
+                    · {{ event.location }}
+                  }
+                  @if (event.assigneeName) {
+                    · {{ event.assigneeName }}
+                  }
+                </span>
+              </div>
+              <span class="row-arrow">›</span>
+            </div>
+          }
+        } @else {
+          <div class="empty-card">No upcoming events yet.</div>
+        }
+      </section>
+
+      <section class="panel chores-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">HOUSE WORK</p>
+            <h2>
+              Chores
+              <span class="count-pill warm">{{ openChoreCount() }} open</span>
+            </h2>
+          </div>
+          <a class="text-button" routerLink="/chores">See all <span>→</span></a>
+        </div>
+
+        @if (overdueChores().length) {
+          <div class="section-label">Overdue</div>
+          @for (item of overdueChores(); track item.id ?? item.title) {
+            <div class="chore-line">
+              <span class="check-circle" [class.done]="item.completed"></span>
+              <div>
+                <strong>{{ item.title }}</strong>
+                <span>{{ item.assignee || 'Unassigned' }} · {{ formatDueDate(item.dueDate) }}</span>
+              </div>
+              <span class="priority">{{ choreBucketLabel(item) }}</span>
+            </div>
+          }
+        }
+        @if (todayChores().length) {
+          <div class="section-label">Today</div>
+          @for (item of todayChores(); track item.id ?? item.title) {
+            <div class="chore-line">
+              <span class="check-circle" [class.done]="item.completed"></span>
+              <div>
+                <strong>{{ item.title }}</strong>
+                <span>{{ item.assignee || 'Unassigned' }} · {{ formatDueDate(item.dueDate) }}</span>
+              </div>
+              <span class="priority normal">{{ choreBucketLabel(item) }}</span>
+            </div>
+          }
+        }
+        @if (upcomingChores().length) {
+          <div class="section-label">Upcoming</div>
+          @for (item of upcomingChores(); track item.id ?? item.title) {
+            <div class="chore-line">
+              <span class="check-circle" [class.done]="item.completed"></span>
+              <div>
+                <strong>{{ item.title }}</strong>
+                <span>{{ item.assignee || 'Unassigned' }} · {{ formatDueDate(item.dueDate) }}</span>
+              </div>
+              <span class="priority normal">{{ choreBucketLabel(item) }}</span>
+            </div>
+          }
+        }
+        @if (!chores().length) {
+          <div class="empty-card">No chores scheduled.</div>
+        }
+      </section>
+
+      <section class="panel shopping-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">SHARED LIST</p>
+            <h2>
+              Shopping
+              <span class="count-pill warm">{{ outstandingShoppingCount() }} needed</span>
+            </h2>
+          </div>
+          <a class="text-button" routerLink="/shopping">See all <span>→</span></a>
+        </div>
+
+        @for (item of outstandingShopping(); track item.id ?? item.name) {
+          <div class="chore-line">
+            <span class="check-circle"></span>
+            <div>
+              <strong>{{ item.name }}</strong>
+              <span>
+                @if (item.quantity) {
+                  {{ item.quantity }} ·
+                }
+                {{ categoryLabel(item.category) }}
+                @if (item.assigneeName) {
+                  · {{ item.assigneeName }}
+                }
+              </span>
+            </div>
+          </div>
+        } @empty {
+          <div class="empty-card">Nothing on the shopping list right now.</div>
+        }
+
+        <div class="points-strip">
+          <span>Shopping</span>
+          <strong>{{ outstandingShoppingCount() }} needed</strong>
+          <span>·</span>
+          <strong>{{ purchasedShoppingCount() }} purchased</strong>
+        </div>
+      </section>
+
+      <section class="panel away-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">HOUSE NOTES</p>
+            <h2>Apartment</h2>
+          </div>
+          <button
+            class="add-button"
+            aria-label="Edit apartment details"
+            (click)="navigateTo('/settings')"
+          >
+            +
+          </button>
+        </div>
+        <div class="away-card">
+          <span class="travel-icon">⌂</span>
+          <div>
+            <strong>{{ apartmentName() }}</strong
+            ><span>{{ apartmentAddress() }}</span>
+          </div>
+          <span class="row-arrow">›</span>
+        </div>
+        <div class="away-card">
+          <span class="travel-icon yellow">◌</span>
+          <div>
+            <strong>Wi‑Fi</strong
+            ><span>{{ dashboard.dashboard()?.apartment?.wifiName ?? 'Not set' }}</span>
+          </div>
+          <span class="row-arrow">›</span>
+        </div>
+        <a class="text-button" routerLink="/settings">View apartment details <span>→</span></a>
+      </section>
+
+      <section class="panel absence-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">AWAY FROM HOME</p>
+            <h2>
+              Planned absences
+              @if (absences().length) {
+                <span class="count-pill">{{ absences().length }}</span>
+              }
+            </h2>
+          </div>
+          <a class="text-button" routerLink="/roommates">Manage <span>→</span></a>
+        </div>
+
+        <div class="absence-list">
+          @for (absence of absences(); track absence.id) {
+            <div class="absence-card" [class.active]="absence.active">
+              <span class="travel-icon">✈</span>
+              <div>
+                <strong>
+                  {{ absence.userName }}
+                  @if (absence.active) {
+                    <span class="you-label">AWAY NOW</span>
+                  }
+                </strong>
+                <span>
+                  {{ formatAbsenceRange(absence) }}
+                  @if (absence.note) {
+                    · {{ absence.note }}
+                  }
+                </span>
+              </div>
+            </div>
+          } @empty {
+            <div class="empty-card">No planned absences — everyone is around.</div>
+          }
+        </div>
+      </section>
+
+      <section class="panel feed-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">FROM THE HOUSE</p>
+            <h2>
+              Latest updates
+              <span class="count-pill">{{ unreadNotifications() }} unread</span>
+            </h2>
+          </div>
+          <a class="text-button" routerLink="/feed">Open feed <span>→</span></a>
+        </div>
+
+        @if (notifications().length) {
+          <div class="feed-grid">
+            @for (
+              notification of notifications().slice(0, 6);
+              track notification.id ?? notification.title
+            ) {
+              <div class="feed-line" [class.unread]="!notification.read">
+                <span class="avatar small coral">{{
+                  notification.title.slice(0, 2).toUpperCase()
+                }}</span>
+                <div>
+                  <p>
+                    <strong>{{ notification.title }}</strong>
+                    {{ notification.message || 'New update from Homebase' }}
+                  </p>
+                  <span>{{ notification.read ? 'Read' : 'Unread' }}</span>
+                </div>
+              </div>
+            }
+          </div>
+        } @else {
+          <div class="empty-card">No updates yet.</div>
+        }
+      </section>
+    </div>
+  </section>
+}

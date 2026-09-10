@@ -34,6 +34,11 @@ public class ShoppingItem {
     @JoinColumn(name = "added_by")
     private UserProfile addedBy;
 
+    /** Optional roommate asked to buy this item; null for existing items. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assignee_id")
+    private UserProfile assignee;
+
     @Column(name = "purchased_at")
     private OffsetDateTime purchasedAt;
 
@@ -86,6 +91,14 @@ public class ShoppingItem {
 
     public void setAddedBy(UserProfile addedBy) {
         this.addedBy = addedBy;
+    }
+
+    public UserProfile getAssignee() {
+        return assignee;
+    }
+
+    public void setAssignee(UserProfile assignee) {
+        this.assignee = assignee;
     }
 
     public OffsetDateTime getPurchasedAt() {

@@ -27,6 +27,11 @@ public class Event {
     @JoinColumn(name = "creator_id", nullable = false)
     private UserProfile creator;
 
+    /** Optional roommate responsible for the event; null for existing events. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assignee_id")
+    private UserProfile assignee;
+
     @Column(name = "title", nullable = false, length = 160)
     private String title;
 
@@ -77,6 +82,14 @@ public class Event {
 
     public void setCreator(UserProfile creator) {
         this.creator = creator;
+    }
+
+    public UserProfile getAssignee() {
+        return assignee;
+    }
+
+    public void setAssignee(UserProfile assignee) {
+        this.assignee = assignee;
     }
 
     public String getTitle() {

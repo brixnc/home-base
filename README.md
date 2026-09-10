@@ -11,16 +11,17 @@ HomeBase is a small shared-apartment app for 3–8 roommates. It provides a sing
 
 ## Main features
 
-- Dashboard with live backend summaries for presence, chores, events, shopping, and notifications
-- Roommate presence updates with consistent statuses: `HOME`, `AWAY`, `WORK`, `SCHOOL`, `TRAVELING`
+- Dashboard with live backend summaries for presence, chores, events, shopping, planned absences, and notifications
+- Explicit presence status picker using the canonical statuses: `HOME`, `AWAY`, `AT_WORK`, `AT_SCHOOL`, `TRAVELING`, `DO_NOT_DISTURB`
 - Chores CRUD with assignment, due dates, description, priority, filters, and sorting
-- Calendar event CRUD with creator ownership checks
-- Shopping item CRUD with categories, purchased state, filters, and sorting
+- Calendar with a month grid **and** the event list behind a view toggle, plus event CRUD with creator ownership checks and an optional assigned roommate
+- Shopping item CRUD with categories, purchased state, an optional assigned roommate, filters, and sorting
 - Roommates page with notes, expected return times, and planned absence CRUD
 - Activity feed posts with create/list/delete-own support
 - Notifications with unread badge, mark-one-read, and mark-all-read
 - Apartment settings with deliberate Wi-Fi password reveal instead of broad exposure
 - Protected client-side routing plus an authenticated 404 page
+- Responsive shell: sidebar on desktop, bottom navigation with a "More" sheet on phones
 
 ## Stack
 
@@ -40,6 +41,32 @@ HomeBase is a small shared-apartment app for 3–8 roommates. It provides a sing
 - Keycloak: `http://localhost:8081`
 - PostgreSQL: `localhost:5433`
 
+## Presence status contract
+
+The backend, the database `presence_status_allowed` constraint and the API all use
+the same canonical values:
+
+`HOME`, `AWAY`, `AT_WORK`, `AT_SCHOOL`, `TRAVELING`, `DO_NOT_DISTURB`
+
+The API returns these values unchanged. Friendly labels ("At work") are a purely
+presentational concern and live in one place on the frontend,
+`frontend/src/app/presence-status.ts`. Writes still accept the legacy `WORK` and
+`SCHOOL` shorthand for compatibility, and normalise it to the canonical value.
+
+## Wi-Fi password handling
+
+- `GET /api/apartment` **never** returns the plaintext password, only `hasWifiPassword`
+- `GET /api/apartment/password` returns it, and only on a deliberate reveal
+- `PUT /api/apartment` treats the `wifiPassword` field as follows:
+  - key absent -> stored password unchanged
+  - value `null` -> stored password unchanged
+  - value `""` -> explicit removal
+  - value `"secret"` -> explicit replacement
+
+The settings form therefore only sends `wifiPassword` when the user actually edited
+the field or pressed "Remove saved password". Revealing or hiding the password is
+display-only and never changes what is stored.
+
 ## Authentication
 
 - Realm: `homebase`
@@ -47,6 +74,14 @@ HomeBase is a small shared-apartment app for 3–8 roommates. It provides a sing
 - Issuer: `http://localhost:8081/realms/homebase`
 
 The frontend authenticates with Keycloak and sends bearer tokens to the Spring Boot API. All `/api/**` endpoints require authentication. Ownership-sensitive actions use the authenticated JWT identity rather than trusting user IDs from the client.
+
+The access token is refreshed proactively, scheduled from the token's own `exp`
+claim (with Keycloak's `onTokenExpired` as a backstop), so a normal expiry never
+logs anyone out. A `401` makes the HTTP interceptor try one refresh and replay the
+request; only a genuine refresh failure ends the session.
+
+Keycloak returns to whichever URL the user opened, so deep links such as
+`http://localhost:4201/chores` and hard refreshes stay on that page.
 
 ## Test users
 
@@ -77,12 +112,8 @@ cd backend
 ./mvnw spring-boot:run
 ```
 
-If `./mvnw` is unavailable in your environment, use your installed Maven:
-
-```bash
-cd backend
-mvn spring-boot:run
-```
+The Maven wrapper is committed, so no local Maven install is required. On Windows
+`cmd`/PowerShell use `mvnw.cmd` instead of `./mvnw`.
 
 ### 3. Start the frontend
 
@@ -136,12 +167,17 @@ docker compose down -v
 - `PUT /api/events/{id}`
 - `DELETE /api/events/{id}`
 
+Events accept an optional `assigneeId`. Edit and delete remain creator-only.
+
 ### Shopping
 
 - `GET /api/shopping`
 - `POST /api/shopping`
 - `PUT /api/shopping/{id}`
 - `DELETE /api/shopping/{id}`
+
+Shopping items accept an optional `assigneeId`, kept separate from the existing
+`addedBy` attribution.
 
 ### Notifications
 
@@ -178,10 +214,13 @@ docker compose down -v
 - Spring Boot uses Flyway migrations from `backend/src/main/resources/db/migration`
 - Hibernate schema auto-creation is disabled; schema changes must go through Flyway
 
-Recent schema additions include:
+Migrations:
 
-- chore priority support
-- absence/feed-post exposure support aligned with the existing schema
+- `V1` initial schema
+- `V2` apartment info, notifications, chore description/completed columns
+- `V3` chore priority constraint
+- `V4` optional `assignee_id` on `events` and `shopping_items` (both nullable, so
+  existing rows are untouched) plus an index on `notifications(user_profile_id)`
 
 ## Testing commands
 
@@ -189,14 +228,14 @@ Recent schema additions include:
 
 ```bash
 cd backend
-mvn clean test
+./mvnw clean test
 ```
 
 ### Frontend unit tests
 
 ```bash
 cd frontend
-npm test -- --runInBand
+npm test
 ```
 
 ### Frontend production build
@@ -209,7 +248,8 @@ npm run build
 ## Troubleshooting
 
 - **Backend fails with `release version 21 not supported`**  
-  Install Java 21 and ensure `JAVA_HOME` points to it before running Maven.
+  Install Java 21 or newer and ensure `JAVA_HOME` points to it before running Maven.
+  The project targets Java 21; newer JDKs (tested on 25) also work.
 
 - **Frontend cannot reach the API**  
   Confirm the backend is running on `http://localhost:8082`.

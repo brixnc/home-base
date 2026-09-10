@@ -164,6 +164,14 @@ public class HouseholdService {
         event.setCreator(currentUser);
         applyEventChanges(event, request, true);
         Event saved = eventRepository.save(event);
+        if (saved.getAssignee() != null) {
+            notificationService.notifyAssignee(
+                currentUser,
+                saved.getAssignee(),
+                "New assigned event",
+                currentUser.getDisplayName() + " made you responsible for \"" + saved.getTitle() + "\"."
+            );
+        }
         notificationService.notifyOtherRoommates(
             currentUser,
             "New apartment event",
@@ -180,8 +188,19 @@ public class HouseholdService {
         if (!event.getCreator().getId().equals(currentUser.getId())) {
             throw new AccessDeniedException("You can only edit your own events");
         }
+        UUID previousAssigneeId = event.getAssignee() != null ? event.getAssignee().getId() : null;
         applyEventChanges(event, request, false);
-        return toEventMap(eventRepository.save(event));
+        Event saved = eventRepository.save(event);
+        UUID newAssigneeId = saved.getAssignee() != null ? saved.getAssignee().getId() : null;
+        if (newAssigneeId != null && !newAssigneeId.equals(previousAssigneeId)) {
+            notificationService.notifyAssignee(
+                currentUser,
+                saved.getAssignee(),
+                "Event reassigned",
+                currentUser.getDisplayName() + " made you responsible for \"" + saved.getTitle() + "\"."
+            );
+        }
+        return toEventMap(saved);
     }
 
     @Transactional
@@ -285,7 +304,13 @@ public class HouseholdService {
         if (request.containsKey("wifiName")) {
             info.setWifiName(normalizeOptionalText(request.get("wifiName"), 120));
         }
-        if (request.containsKey("wifiPassword")) {
+        // Wi-Fi password rules (see ApartmentInfo handling in the settings UI):
+        //   key absent      -> leave the stored password untouched
+        //   value null      -> leave the stored password untouched
+        //   value ""        -> explicit removal
+        //   value "secret"  -> explicit replacement
+        // Only a deliberate user action can therefore clear the password.
+        if (request.containsKey("wifiPassword") && request.get("wifiPassword") != null) {
             info.setWifiPassword(normalizeOptionalText(request.get("wifiPassword"), 120));
         }
         if (request.containsKey("landlordContact")) {
@@ -385,6 +410,9 @@ public class HouseholdService {
         if (request.containsKey("location") || creating) {
             event.setLocation(normalizeOptionalText(request.get("location"), 160));
         }
+        if (request.containsKey("assigneeId")) {
+            event.setAssignee(resolveAssignee(request.get("assigneeId")));
+        }
         if (creating || request.containsKey("startTime")) {
             event.setStartsAt(parseLocalDateTime(request.get("startTime"), "startTime"));
         }
@@ -405,6 +433,9 @@ public class HouseholdService {
         }
         if (creating || request.containsKey("category")) {
             item.setCategory(normalizeCategory(request.get("category")));
+        }
+        if (request.containsKey("assigneeId")) {
+            item.setAssignee(resolveAssignee(request.get("assigneeId")));
         }
         if (request.containsKey("purchased")) {
             boolean purchased = Boolean.parseBoolean(String.valueOf(request.get("purchased")));
@@ -438,7 +469,7 @@ public class HouseholdService {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("userId", profile.getId().toString());
         row.put("name", profile.getDisplayName());
-        row.put("status", toPublicStatus(presence != null ? presence.getStatus() : "AWAY"));
+        row.put("status", presence != null && presence.getStatus() != null ? presence.getStatus() : "AWAY");
         row.put("note", presence != null ? presence.getNote() : null);
         row.put("backAt", presence != null && presence.getBackAt() != null ? presence.getBackAt().toString() : null);
         row.put("updatedAt", presence != null && presence.getUpdatedAt() != null ? presence.getUpdatedAt().toString() : null);
@@ -477,6 +508,8 @@ public class HouseholdService {
         row.put("location", event.getLocation());
         row.put("creatorId", event.getCreator() != null ? event.getCreator().getId().toString() : null);
         row.put("creatorName", event.getCreator() != null ? event.getCreator().getDisplayName() : null);
+        row.put("assigneeId", event.getAssignee() != null ? event.getAssignee().getId().toString() : null);
+        row.put("assigneeName", event.getAssignee() != null ? event.getAssignee().getDisplayName() : null);
         row.put("createdAt", event.getCreatedAt() != null ? event.getCreatedAt().toString() : null);
         row.put("updatedAt", event.getUpdatedAt() != null ? event.getUpdatedAt().toString() : null);
         row.put("past", startsAt != null && startsAt.isBefore(LocalDateTime.now()));
@@ -492,6 +525,8 @@ public class HouseholdService {
         row.put("purchased", item.getPurchasedAt() != null);
         row.put("addedById", item.getAddedBy() != null ? item.getAddedBy().getId().toString() : null);
         row.put("addedByName", item.getAddedBy() != null ? item.getAddedBy().getDisplayName() : null);
+        row.put("assigneeId", item.getAssignee() != null ? item.getAssignee().getId().toString() : null);
+        row.put("assigneeName", item.getAssignee() != null ? item.getAssignee().getDisplayName() : null);
         row.put("createdAt", item.getCreatedAt() != null ? item.getCreatedAt().toString() : null);
         return row;
     }
@@ -521,17 +556,6 @@ public class HouseholdService {
         row.put("emergencyContact", info != null ? info.getEmergencyContact() : null);
         row.put("sharedNotes", info != null ? info.getSharedNotes() : null);
         return row;
-    }
-
-    private String toPublicStatus(String status) {
-        if (status == null) {
-            return "AWAY";
-        }
-        return switch (status.trim().toUpperCase()) {
-            case "AT_WORK" -> "WORK";
-            case "AT_SCHOOL" -> "SCHOOL";
-            default -> status.trim().toUpperCase();
-        };
     }
 
     private Map<String, Object> toAbsenceMap(Absence absence, UserProfile currentUser) {

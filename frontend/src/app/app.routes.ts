@@ -1,14 +1,7 @@
 import { Component } from '@angular/core';
 import { RouterLink, Routes } from '@angular/router';
 import { authGuard } from './auth.guard';
-import { ChoresComponent } from './chores.component';
-import {
-  CalendarComponent,
-  FeedComponent,
-  RoommatesComponent,
-  SettingsComponent,
-  ShoppingComponent,
-} from './household-pages.component';
+import { DashboardComponent } from './dashboard.component';
 
 @Component({
   template: `
@@ -50,52 +43,49 @@ import {
 })
 class NotFoundComponent {}
 
-@Component({
-  template: '',
-})
-class DashboardRouteComponent {}
-
 export const routes: Routes = [
   {
     path: 'dashboard',
     title: 'Home · homebase',
-    component: DashboardRouteComponent,
+    component: DashboardComponent,
     canActivate: [authGuard],
   },
   {
     path: 'calendar',
     title: 'Calendar · homebase',
-    component: CalendarComponent,
+    loadComponent: () => import('./household-pages.component').then((m) => m.CalendarComponent),
     canActivate: [authGuard],
   },
   {
     path: 'chores',
     title: 'Chores · homebase',
-    component: ChoresComponent,
+    loadComponent: () => import('./chores.component').then((m) => m.ChoresComponent),
     canActivate: [authGuard],
   },
   {
     path: 'shopping',
     title: 'Shopping · homebase',
-    component: ShoppingComponent,
+    loadComponent: () => import('./household-pages.component').then((m) => m.ShoppingComponent),
     canActivate: [authGuard],
   },
   {
     path: 'roommates',
     title: 'Roommates · homebase',
-    component: RoommatesComponent,
+    loadComponent: () => import('./household-pages.component').then((m) => m.RoommatesComponent),
     canActivate: [authGuard],
   },
   {
     path: 'settings',
     title: 'Settings · homebase',
-    component: SettingsComponent,
+    loadComponent: () => import('./household-pages.component').then((m) => m.SettingsComponent),
     canActivate: [authGuard],
   },
+  // `/apartment` is the natural name for the settings screen; keep both working.
+  { path: 'apartment', pathMatch: 'full', redirectTo: 'settings' },
   {
     path: 'feed',
     title: 'Feed · homebase',
-    component: FeedComponent,
+    loadComponent: () => import('./household-pages.component').then((m) => m.FeedComponent),
     canActivate: [authGuard],
   },
   { path: '', pathMatch: 'full', redirectTo: 'dashboard' },

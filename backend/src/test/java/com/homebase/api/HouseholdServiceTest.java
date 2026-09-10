@@ -2,6 +2,7 @@ package com.homebase.api;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -14,6 +15,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -212,6 +214,162 @@ class HouseholdServiceTest {
         service.updateChore(current, chore.getId(), Map.of("assigneeId", assignee.getId().toString()));
 
         verify(notificationService, never()).notifyAssignee(any(), any(), any(), any());
+    }
+
+    // ---- Apartment Wi-Fi password contract ----
+    // Regression: saving any other field used to send an empty wifiPassword,
+    // which nulled the stored one.
+
+    @Test
+    void updateApartmentKeepsWifiPasswordWhenKeyIsAbsent() {
+        ApartmentInfo info = apartmentWithPassword("homebase123");
+        when(apartmentInfoRepository.findFirstByOrderByCreatedAtAsc()).thenReturn(Optional.of(info));
+        when(apartmentInfoRepository.save(any(ApartmentInfo.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.updateApartment(Map.of("name", "New name", "wifiName", "vog69"));
+
+        assertEquals("homebase123", info.getWifiPassword());
+    }
+
+    @Test
+    void updateApartmentKeepsWifiPasswordWhenValueIsNull() {
+        ApartmentInfo info = apartmentWithPassword("homebase123");
+        when(apartmentInfoRepository.findFirstByOrderByCreatedAtAsc()).thenReturn(Optional.of(info));
+        when(apartmentInfoRepository.save(any(ApartmentInfo.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Map<String, Object> request = new HashMap<>();
+        request.put("name", "New name");
+        request.put("wifiPassword", null);
+        service.updateApartment(request);
+
+        assertEquals("homebase123", info.getWifiPassword());
+    }
+
+    @Test
+    void updateApartmentReplacesWifiPasswordWhenProvided() {
+        ApartmentInfo info = apartmentWithPassword("homebase123");
+        when(apartmentInfoRepository.findFirstByOrderByCreatedAtAsc()).thenReturn(Optional.of(info));
+        when(apartmentInfoRepository.save(any(ApartmentInfo.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.updateApartment(Map.of("name", "vog69", "wifiPassword", "a-new-secret"));
+
+        assertEquals("a-new-secret", info.getWifiPassword());
+    }
+
+    @Test
+    void updateApartmentClearsWifiPasswordOnExplicitEmptyString() {
+        ApartmentInfo info = apartmentWithPassword("homebase123");
+        when(apartmentInfoRepository.findFirstByOrderByCreatedAtAsc()).thenReturn(Optional.of(info));
+        when(apartmentInfoRepository.save(any(ApartmentInfo.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.updateApartment(Map.of("name", "vog69", "wifiPassword", ""));
+
+        assertNull(info.getWifiPassword());
+    }
+
+    @Test
+    void getApartmentNeverExposesThePlaintextPassword() {
+        when(apartmentInfoRepository.findFirstByOrderByCreatedAtAsc())
+            .thenReturn(Optional.of(apartmentWithPassword("homebase123")));
+
+        Map<String, Object> result = service.getApartment();
+
+        assertFalse(result.containsKey("wifiPassword"));
+        assertEquals(true, result.get("hasWifiPassword"));
+    }
+
+    // ---- Presence status contract ----
+
+    @Test
+    void presenceKeepsCanonicalStatusValues() {
+        UserProfile current = user("Brian");
+        when(userProfileRepository.findAll()).thenReturn(List.of(current));
+        PresenceStatus presence = new PresenceStatus();
+        presence.setUserProfile(current);
+        presence.setStatus("DO_NOT_DISTURB");
+        presence.setUpdatedAt(OffsetDateTime.now());
+        when(presenceStatusRepository.findByUserProfileId(current.getId())).thenReturn(Optional.of(presence));
+
+        assertEquals("DO_NOT_DISTURB", service.listPresence(current).getFirst().get("status"));
+    }
+
+    // ---- Assignment on events and shopping items ----
+
+    @Test
+    void createEventStoresAssigneeAndNotifiesThem() {
+        UserProfile current = user("Brian");
+        UserProfile assignee = user("Alex");
+        when(userProfileRepository.findById(assignee.getId())).thenReturn(Optional.of(assignee));
+        when(eventRepository.save(any(Event.class))).thenAnswer(invocation -> {
+            Event event = invocation.getArgument(0);
+            event.setId(UUID.randomUUID());
+            event.setCreatedAt(OffsetDateTime.now());
+            event.setUpdatedAt(OffsetDateTime.now());
+            return event;
+        });
+
+        Map<String, Object> result = service.createEvent(current, Map.of(
+            "title", "Flat dinner",
+            "startTime", LocalDateTime.now().plusDays(1).withNano(0).toString(),
+            "assigneeId", assignee.getId().toString()
+        ));
+
+        assertEquals(assignee.getId().toString(), result.get("assigneeId"));
+        assertEquals("Alex", result.get("assigneeName"));
+        verify(notificationService).notifyAssignee(
+            current, assignee, "New assigned event", "Brian made you responsible for \"Flat dinner\".");
+    }
+
+    @Test
+    void eventWithoutAssigneeStaysUnassigned() {
+        UserProfile current = user("Brian");
+        when(eventRepository.save(any(Event.class))).thenAnswer(invocation -> {
+            Event event = invocation.getArgument(0);
+            event.setId(UUID.randomUUID());
+            event.setCreatedAt(OffsetDateTime.now());
+            event.setUpdatedAt(OffsetDateTime.now());
+            return event;
+        });
+
+        Map<String, Object> result = service.createEvent(current, Map.of(
+            "title", "Inspection",
+            "startTime", LocalDateTime.now().plusDays(2).withNano(0).toString()
+        ));
+
+        assertNull(result.get("assigneeId"));
+        verify(notificationService, never()).notifyAssignee(any(), any(), any(), any());
+    }
+
+    @Test
+    void shoppingItemStoresAssigneeAlongsideAddedBy() {
+        UserProfile current = user("Brian");
+        UserProfile assignee = user("Alex");
+        when(userProfileRepository.findById(assignee.getId())).thenReturn(Optional.of(assignee));
+        when(shoppingItemRepository.save(any(ShoppingItem.class))).thenAnswer(invocation -> {
+            ShoppingItem item = invocation.getArgument(0);
+            item.setId(UUID.randomUUID());
+            item.setCreatedAt(OffsetDateTime.now());
+            return item;
+        });
+
+        Map<String, Object> result = service.createShoppingItem(current, Map.of(
+            "name", "Bin bags",
+            "category", "HOUSEHOLD",
+            "assigneeId", assignee.getId().toString()
+        ));
+
+        assertEquals("Brian", result.get("addedByName"));
+        assertEquals("Alex", result.get("assigneeName"));
+        assertFalse((Boolean) result.get("purchased"));
+    }
+
+    private ApartmentInfo apartmentWithPassword(String password) {
+        ApartmentInfo info = new ApartmentInfo();
+        info.setId(UUID.randomUUID());
+        info.setName("vog69");
+        info.setWifiName("vog69");
+        info.setWifiPassword(password);
+        return info;
     }
 
     private UserProfile user(String name) {
